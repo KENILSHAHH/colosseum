@@ -1,0 +1,37 @@
+{
+  "name": "@app/core",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./executors/*": "./src/executors/*.ts",
+    "./guards": "./src/guards.ts",
+    "./adapters/*": "./src/adapters/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "migrate": "tsx src/migrate.ts",
+    "ingest": "tsx src/kb/ingest.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.296",
+    "@anthropic-ai/sdk": "^0.133.0",
+    "@bgd-labs/aave-address-book": "^4.44.22",
+    "@metamask/smart-accounts-kit": "^2.0.0",
+    "@nktkas/hyperliquid": "^0.33.3",
+    "@privy-io/node": "^0.35.0",
+    "@solana/kit": "^8.4.0",
+    "mppx": "^0.13.4",
+    "postgres": "^3.4.9",
+    "viem": "^2.57.4",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}
