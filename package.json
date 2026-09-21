@@ -1,0 +1,15 @@
+{
+  "name": "colosseum-defi-agent",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev:api": "pnpm --filter @app/api dev",
+    "dev:web": "pnpm --filter @app/web dev",
+    "dev:guard": "pnpm --filter @app/guard dev",
+    "db:migrate": "pnpm --filter @app/core migrate",
+    "kb:ingest": "pnpm --filter @app/core ingest",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test"
+  }
+}

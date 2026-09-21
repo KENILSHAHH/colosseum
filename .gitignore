@@ -1,0 +1,17 @@
+node_modules
+.env
+.env.*
+!.env.example
+.next
+dist
+target
+out
+cache
+broadcast
+cdk.out
+.anchor
+test-ledger
+kb/mirror
+workspaces
+*.log
+.DS_Store
