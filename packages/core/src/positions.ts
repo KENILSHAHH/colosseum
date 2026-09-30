@@ -1,0 +1,33 @@
+// One view of everything the agent wallet holds: balances, Hyperliquid positions, Aave accounts, guards.
+import type { Address } from "viem";
+import * as aave from "./adapters/aave";
+import * as hl from "./adapters/hyperliquid";
+import { listGuards } from "./guards";
+import { walletBalances } from "./wallet";
+
+const settle = async <T>(p: Promise<T>): Promise<{ data: T | null; error: string | null }> => {
+  try {
+    return { data: await p, error: null };
+  } catch (err) {
+    return { data: null, error: err instanceof Error ? err.message.slice(0, 160) : String(err) };
+  }
+};
+
+export async function getPositions(userId: string, address: Address) {
+  const [balances, hyper, aaveAccounts, guards] = await Promise.all([
+    settle(walletBalances(address)),
+    settle(hl.getAccount(address)),
+    settle(Promise.all((["ethereum", "arbitrum", "base"] as const).map((c) => aave.getAccount(c, address).then((a) => ({ ...a, chainKey: c })))) ),
+    settle(listGuards(userId)),
+  ]);
+  return {
+    address,
+    asOf: new Date().toISOString(),
+    balances: balances.data ?? [],
+    hyperliquid: hyper.data ?? { user: address, accounts: [], positions: [] },
+    aave: (aaveAccounts.data ?? []).filter((a) => a.collateralUsd > 0.01 || a.debtUsd > 0.01),
+    guards: (guards.data ?? []).filter((g) => g.status === "active" || g.status === "triggered"),
+    // A source that failed is listed here. A missing position is then not read as "no position".
+    errors: Object.entries({ balances: balances.error, hyperliquid: hyper.error, aave: aaveAccounts.error, guards: guards.error }).flatMap(([k, v]) => (v ? [`${k}: ${v}`] : [])),
+  };
+}
