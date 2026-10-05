@@ -1,0 +1,23 @@
+{
+  "name": "@app/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env src/server.ts",
+    "start": "tsx --env-file-if-exists=../../.env src/server.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@app/core": "workspace:*",
+    "@hono/node-server": "^2.1.4",
+    "hono": "^4.13.13",
+    "mppx": "^0.13.4",
+    "viem": "^2.57.4",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,23 @@
+// Sign in with a throwaway key, then read the account, the agent wallet and the positions.
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+const api = process.env.API_URL ?? "http://localhost:8787";
+const acct = privateKeyToAccount(generatePrivateKey());
+const j = async (p: string, init?: RequestInit) => { const r = await fetch(api + p, init); return { status: r.status, body: await r.json() }; };
+const post = (p: string, body: unknown, token?: string) => j(p, { method: "POST", headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body) });
+const n = await post("/auth/nonce", { address: acct.address });
+const bad = await post("/auth/verify", { address: acct.address, nonce: n.body.nonce, signature: await privateKeyToAccount(generatePrivateKey()).signMessage({ message: n.body.message }) });
+console.log("wrong signer ->", bad.status, bad.body.error);
+const v = await post("/auth/verify", { address: acct.address, nonce: n.body.nonce, signature: await acct.signMessage({ message: n.body.message }) });
+const t = v.body.token;
+const h = { headers: { authorization: `Bearer ${t}` } };
+console.log("no token ->", (await j("/me")).status);
+const me = (await j("/me", h)).body;
+console.log("me ->", JSON.stringify(me));
+console.log("same wallet on 2nd read ->", (await j("/me", h)).body.wallet.address === me.wallet.address);
+console.log("settings ->", JSON.stringify((await post("/wallet/settings", { autoExecute: false, maxActionUsd: 100 }, t)).body));
+const pos = (await j("/positions", h)).body;
+console.log("positions ->", JSON.stringify({ balances: pos.balances, hl: pos.hyperliquid.accounts.length, aave: pos.aave.length, errors: pos.errors }));
+const wd = await post("/wallet/withdraw", { chain: "base", asset: "USDC", amount: 1 }, t);
+console.log("withdraw from empty wallet ->", wd.status, String(wd.body.error).slice(0, 110));
+const chat = await post("/chat", { prompt: "hi" }, t);
+console.log("chat without key ->", chat.status, chat.body.error);
