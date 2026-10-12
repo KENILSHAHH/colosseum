@@ -77,7 +77,9 @@ describe("crypto", () => {
   it("rejects a changed token and an expired token", () => {
     const t = signToken({ sub: "0xabc" }, 60);
     expect(verifyToken(t)?.sub).toBe("0xabc");
-    expect(verifyToken(t.replace(/.$/, (c) => (c === "A" ? "B" : "A")))).toBeNull();
+    // Change the first character of the signature. The last character of base64url holds unused bits, so a change there can decode to the same bytes.
+    const [body, mac] = t.split(".") as [string, string];
+    expect(verifyToken(`${body}.${mac[0] === "A" ? "B" : "A"}${mac.slice(1)}`)).toBeNull();
     expect(verifyToken(signToken({ sub: "0xabc" }, -1))).toBeNull();
   });
   it("encrypts and decrypts an agent key", () => {
