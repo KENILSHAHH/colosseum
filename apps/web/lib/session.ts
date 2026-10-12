@@ -1,6 +1,6 @@
 "use client";
 
-import { usePrivy } from "@privy-io/react-auth";
+import { usePrivy, useSigners } from "@privy-io/react-auth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, post, token, type Me } from "./api";
@@ -74,6 +74,24 @@ export function useSession() {
       }
     },
   });
+
+  // The server signer lets the deposit converter move tokens that arrive in the Privy wallet. One attempt for each page load.
+  const { addSigners } = useSigners();
+  const signerTried = useRef(false);
+  const deposit = me.data?.deposit;
+  useEffect(() => {
+    if (!deposit?.address || deposit.enabled || !deposit.signerId || signerTried.current) return;
+    signerTried.current = true;
+    void (async () => {
+      try {
+        await addSigners({ address: deposit.address!, signers: [{ signerId: deposit.signerId!, policyIds: [] }] });
+        await post("/deposit/enable");
+        await qc.invalidateQueries({ queryKey: ["me"] });
+      } catch (e) {
+        console.warn("The server signer was not added to the Privy wallet:", e);
+      }
+    })();
+  }, [deposit?.address, deposit?.enabled, deposit?.signerId, addSigners, qc]);
 
   const signIn = useCallback(() => {
     setError(null);

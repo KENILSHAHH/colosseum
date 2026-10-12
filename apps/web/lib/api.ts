@@ -38,6 +38,8 @@ export interface Permission {
 export interface Me {
   address: string;
   linkedWallet: string | null;
+  /** The Privy wallet of the user. Tokens that arrive there convert to OUSD on Tempo when `enabled` is true. */
+  deposit: { address: string | null; enabled: boolean; signerId: string | null } | null;
   wallet: { address: string; autoExecute: boolean; maxActionUsd: number };
   pricing: { promptUsd: number; actionUsd: number; guardMinuteUsd: number };
   mppEnabled: boolean;
