@@ -1,5 +1,41 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: "Coinbase Sans";
+  src: url("/fonts/Coinbase_Sans-Regular-web-1.32.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Coinbase Sans";
+  src: url("/fonts/Coinbase_Sans-Medium-web-1.32.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Coinbase Sans";
+  src: url("/fonts/Coinbase_Sans-Bold-web-1.32.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Coinbase Mono";
+  src: url("/fonts/Coinbase_Mono-Regular-web.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Coinbase Mono";
+  src: url("/fonts/Coinbase_Mono-Medium-web.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
 @theme {
   --color-bg: #070912;
   --color-panel: #10131d;
@@ -13,8 +49,8 @@
   --color-good: #4cc38a;
   --color-warn: #e5b454;
   --color-bad: #ef6f6c;
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: "Coinbase Sans", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Coinbase Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 html,
