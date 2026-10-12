@@ -47,7 +47,13 @@ export async function deployExecutor(chain: ExecutorChain): Promise<{ address: A
   const wallet = createWalletClient({ account: privateKeyToAccount(key as Hex), chain: viemChain(chain), transport: http() });
   const hash = await wallet.sendTransaction({ to: CREATE2_DEPLOYER, data: concat([zeroHash, initCode()]) });
   const r = await publicClient(chain).waitForTransactionReceipt({ hash, timeout: 180_000 });
-  if (r.status !== "success" || !(await isDeployed(chain))) throw new Error(`The executor deployment ${hash} failed on ${CHAINS[chain].name}.`);
+  // A public RPC can serve the code read from a node that has not seen the new block yet, so it reads again.
+  let ok = r.status === "success" && (await isDeployed(chain));
+  for (let i = 0; !ok && r.status === "success" && i < 5; i++) {
+    await new Promise((res) => setTimeout(res, 2000));
+    ok = await isDeployed(chain);
+  }
+  if (!ok) throw new Error(`The executor deployment ${hash} failed on ${CHAINS[chain].name}.`);
   return { address: executorAddress(), hash };
 }
 
