@@ -151,48 +151,42 @@ export default function Page() {
 
   const hint = session.signedIn ? SUGGESTIONS[hintIndex] : "Sign in to chat";
   const composer = (
-    <>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          send(input);
-        }}
-        className="flex items-end gap-2 rounded-2xl border border-line bg-panel p-2 pl-4 focus-within:border-faint"
-      >
-        <div className="relative min-w-0 flex-1">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                send(input);
-              }
-            }}
-            rows={1}
-            aria-label="Ask or tell the agent what to do"
-            disabled={!session.signedIn}
-            className="block max-h-40 min-h-[40px] w-full resize-none bg-transparent py-2 text-[15px] outline-none [field-sizing:content]"
-          />
-          {!input && (
-            <span className="pointer-events-none absolute inset-0 flex items-center truncate text-[15px] text-faint">{hint}</span>
-          )}
-        </div>
-        {busy ? (
-          <button type="button" onClick={() => abort.current?.abort()} className="grid size-9 place-items-center rounded-xl bg-raised text-ink" title="Stop">
-            <Square className="size-3.5 fill-current" />
-          </button>
-        ) : (
-          <button type="submit" disabled={!input.trim() || !session.signedIn} className="grid size-9 place-items-center rounded-xl bg-accent text-black disabled:opacity-30" title="Send">
-            <ArrowUp className="size-4" />
-          </button>
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        send(input);
+      }}
+      className="flex items-end gap-2 rounded-2xl border border-line bg-panel p-2 pl-4 focus-within:border-faint"
+    >
+      <div className="relative min-w-0 flex-1">
+        <textarea
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              send(input);
+            }
+          }}
+          rows={1}
+          aria-label="Ask or tell the agent what to do"
+          disabled={!session.signedIn}
+          className="block max-h-40 min-h-[40px] w-full resize-none bg-transparent py-2 text-[15px] outline-none [field-sizing:content]"
+        />
+        {!input && (
+          <span className="pointer-events-none absolute inset-0 flex items-center truncate text-[15px] text-faint">{hint}</span>
         )}
-      </form>
-      <div className="mt-2 flex justify-between px-1 text-[11.5px] text-faint">
-        <span>{session.me ? `${usd(session.me.pricing.promptUsd)} per prompt${session.me.mppEnabled ? " · the agent wallet pays in OUSD through MPP on Tempo" : ""}` : "Prompts and actions are priced before they run"}</span>
-        <span>Not financial advice</span>
       </div>
-    </>
+      {busy ? (
+        <button type="button" onClick={() => abort.current?.abort()} className="grid size-9 place-items-center rounded-xl bg-raised text-ink" title="Stop">
+          <Square className="size-3.5 fill-current" />
+        </button>
+      ) : (
+        <button type="submit" disabled={!input.trim() || !session.signedIn} className="grid size-9 place-items-center rounded-xl bg-accent text-black disabled:opacity-30" title="Send">
+          <ArrowUp className="size-4" />
+        </button>
+      )}
+    </form>
   );
 
   return (
