@@ -369,11 +369,6 @@ function MessageView({ message, streaming }: { message: Message; streaming: bool
         </div>
       )}
       {message.error && <div className="mt-3 rounded-lg border border-bad/40 bg-bad/10 px-3 py-2 text-[13.5px] text-bad">{message.error}</div>}
-      {message.cost && (
-        <div className="mt-3 text-[11.5px] text-faint">
-          Charged {usd(message.cost.chargedUsd)} · model cost {usd(message.cost.costUsd)}
-        </div>
-      )}
     </div>
   );
 }

@@ -32,33 +32,38 @@ export function promptPriceUsd(): number {
   return config().PRICE_PROMPT_USD;
 }
 
+/**
+ * Record the usage of one prompt. The SDK reports the usage of the whole conversation so far (a resumed session continues the total),
+ * so the usage of this prompt is the difference to the last total stored for the session and the model.
+ */
 export async function recordUsage(args: { userId: string; sessionId: string | null; modelUsage: Record<string, TokenUsage & { costUSD?: number }> }) {
   let cost = 0;
   // The flat price goes on the first model row, so the sum of the rows is the price of the prompt.
   let price = promptPriceUsd();
-  for (const [model, u] of Object.entries(args.modelUsage)) {
-    const c = claudeCostUsd(model, u);
+  for (const [model, total] of Object.entries(args.modelUsage)) {
+    const sid = args.sessionId ?? "";
+    const [last] = await sql()<{ input: string; output: string; cache_read: string; cache_write: string; cost_usd: string }[]>`
+      select input, output, cache_read, cache_write, cost_usd from usage_snapshots where session_id = ${sid} and model = ${model}`;
+    const prev = last
+      ? { inputTokens: Number(last.input), outputTokens: Number(last.output), cacheReadInputTokens: Number(last.cache_read), cacheCreationInputTokens: Number(last.cache_write), costUSD: Number(last.cost_usd) }
+      : null;
+    // A total lower than the stored one means a new counter: then the total is the usage of this prompt.
+    const grows = prev && total.inputTokens >= prev.inputTokens && total.outputTokens >= prev.outputTokens && total.cacheReadInputTokens >= prev.cacheReadInputTokens;
+    const u: TokenUsage = grows
+      ? { inputTokens: total.inputTokens - prev!.inputTokens, outputTokens: total.outputTokens - prev!.outputTokens, cacheReadInputTokens: total.cacheReadInputTokens - prev!.cacheReadInputTokens, cacheCreationInputTokens: Math.max(0, total.cacheCreationInputTokens - prev!.cacheCreationInputTokens) }
+      : total;
+    // The SDK prices each model itself. Its figure is preferred; the table here is the fallback.
+    const sdkCost = typeof total.costUSD === "number" ? (grows ? total.costUSD - prev!.costUSD : total.costUSD) : null;
+    const c = sdkCost !== null && sdkCost >= 0 ? sdkCost : claudeCostUsd(model, u);
     cost += c;
     await sql()`insert into usage (user_id, session_id, model, input_tokens, output_tokens, cache_read, cache_write, cost_usd, charged_usd)
       values (${args.userId}, ${args.sessionId}, ${model}, ${u.inputTokens}, ${u.outputTokens}, ${u.cacheReadInputTokens}, ${u.cacheCreationInputTokens}, ${c}, ${price})`;
+    await sql()`insert into usage_snapshots (session_id, model, input, output, cache_read, cache_write, cost_usd)
+      values (${sid}, ${model}, ${total.inputTokens}, ${total.outputTokens}, ${total.cacheReadInputTokens}, ${total.cacheCreationInputTokens}, ${total.costUSD ?? 0})
+      on conflict (session_id, model) do update set input = excluded.input, output = excluded.output, cache_read = excluded.cache_read, cache_write = excluded.cache_write, cost_usd = excluded.cost_usd`;
     price = 0;
   }
   return { costUsd: cost, chargedUsd: promptPriceUsd() };
-}
-
-export async function spentTodayUsd(userId: string): Promise<number> {
-  const [row] = await sql()<{ s: string | null }[]>`select sum(cost_usd) as s from usage where user_id = ${userId} and created_at > now() - interval '24 hours'`;
-  return Number(row?.s ?? 0);
-}
-
-/** Budget cap and rate limit per user. One user cannot drain the API key. */
-export async function checkBudget(userId: string): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const c = config();
-  const spent = await spentTodayUsd(userId);
-  if (spent >= c.USER_DAILY_LLM_BUDGET_USD) return { ok: false, reason: `Daily model budget reached (${spent.toFixed(2)} of ${c.USER_DAILY_LLM_BUDGET_USD} USD).` };
-  const [row] = await sql()<{ n: string }[]>`select count(distinct date_trunc('second', created_at)) as n from usage where user_id = ${userId} and created_at > now() - interval '1 minute'`;
-  if (Number(row?.n ?? 0) >= c.USER_PROMPTS_PER_MINUTE) return { ok: false, reason: "Too many prompts in one minute. Wait and try again." };
-  return { ok: true };
 }
 
 export async function recordCharge(args: { userId: string; kind: "prompt" | "action" | "guard"; amountUsd: number; reference?: string | null; detail?: unknown }) {

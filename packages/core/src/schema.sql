@@ -176,3 +176,15 @@ alter table delegations add column if not exists for_contract boolean not null d
 -- The limit for one action was 250 USD for every wallet. The product no longer limits the agent by default.
 alter table agent_wallets alter column max_action_usd set default 1000000;
 update agent_wallets set max_action_usd = 1000000 where max_action_usd = 250;
+
+-- The last usage total that the SDK reported for each session and model. The usage of a prompt is the difference to it.
+create table if not exists usage_snapshots (
+  session_id  text not null,
+  model       text not null,
+  input       bigint not null,
+  output      bigint not null,
+  cache_read  bigint not null,
+  cache_write bigint not null,
+  cost_usd    numeric not null,
+  primary key (session_id, model)
+);

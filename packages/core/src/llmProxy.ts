@@ -4,7 +4,6 @@
 // Pattern: https://code.claude.com/docs/en/agent-sdk/secure-deployment#the-proxy-pattern
 import { createServer, type Server } from "node:http";
 import { Readable } from "node:stream";
-import { checkBudget } from "./billing/pricing";
 import { config } from "./config";
 import { signToken, verifyToken } from "./crypto";
 
@@ -22,11 +21,6 @@ export function startLlmProxy(port = config().LLM_PROXY_PORT): Server {
       const claims = verifyToken<{ sub: string; aud: string }>(token);
       if (!claims || claims.aud !== "llm") {
         res.writeHead(401, { "content-type": "application/json" }).end(JSON.stringify({ type: "error", error: { type: "authentication_error", message: "invalid session token" } }));
-        return;
-      }
-      const budget = await checkBudget(claims.sub);
-      if (!budget.ok) {
-        res.writeHead(429, { "content-type": "application/json" }).end(JSON.stringify({ type: "error", error: { type: "rate_limit_error", message: budget.reason } }));
         return;
       }
       const apiKey = config().ANTHROPIC_API_KEY;

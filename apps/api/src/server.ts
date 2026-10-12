@@ -5,7 +5,7 @@ import { verifyMessage } from "viem";
 import { z } from "zod";
 import { Receipt } from "mppx";
 import {
-  checkBudget, config, ensureUser, executeIntent, getDepositWallet, getIntent, getOrCreateWallet, getPositions, isExpired, listDeposits, listIntents,
+  config, ensureUser, executeIntent, getDepositWallet, getIntent, getOrCreateWallet, getPositions, isExpired, listDeposits, listIntents,
   migrate, privyEnabled, sponsorAddress, startDepositSweeper, syncDepositWallet, walletSender, privySignIn, promptPriceUsd, recordCharge, runChatAgent, sendToRun, signToken, sql, startLlmProxy, transition, updateWalletSettings, verifyToken, withdrawToOwner, type AgentEvent,
 } from "@app/core";
 import { delegation, jobs, lifi } from "@app/core";
@@ -184,8 +184,6 @@ app.post("/chat", async (c) => {
   const body = ChatBody.parse(await c.req.json());
   const cfg = config();
   if (!cfg.ANTHROPIC_API_KEY) return c.json({ error: "ANTHROPIC_API_KEY is not set on the server. Add it to .env and restart the API." }, 503);
-  const budget = await checkBudget(userId);
-  if (!budget.ok) return c.json({ error: budget.reason }, 429);
 
   // Development mode: no payment. Usage is still measured and priced.
   if (!mppEnabled()) return chatStream(userId, body, c.req.raw.signal, true);
@@ -229,8 +227,6 @@ app.post("/paid/chat", async (c) => {
   const userId = claims.sub;
   const request = c.req.raw.clone();
   const body = ChatBody.parse(await c.req.json());
-  const budget = await checkBudget(userId);
-  if (!budget.ok) return c.json({ error: budget.reason }, 429);
 
   const price = promptPriceUsd();
   const result = await mpp().charge({ amount: price.toString(), description: "One prompt to the DeFi agent" })(request);

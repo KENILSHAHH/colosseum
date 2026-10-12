@@ -184,9 +184,8 @@ export async function* runChatAgent(args: RunArgs): AsyncGenerator<AgentEvent> {
       filesystem: { denyRead: [REPO_ROOT, path.resolve(c.WORKSPACES_DIR), "/home", "/root", "/Users", "/etc/caddy"], allowRead: [base, ...TOOLCHAIN_DIRS], allowWrite: [base] },
     },
     includePartialMessages: true,
-    // A long task (build, test on a fork, deploy, schedule) needs many steps. The daily budget of the user is the only cost limit.
+    // A long task (build, test on a fork, deploy, schedule) needs many steps. There is no cost limit.
     maxTurns: 300,
-    maxBudgetUsd: c.USER_DAILY_LLM_BUDGET_USD,
     hooks: { PreToolUse: [{ matcher: FILE_TOOLS, hooks: [fileGuard as never] }] },
     // The subprocess environment holds no secret. It reaches Claude through the local proxy with a session token.
     env: {
