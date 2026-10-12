@@ -170,3 +170,9 @@ create table if not exists jobs (
 );
 create index if not exists jobs_active on jobs(status) where status = 'active';
 create index if not exists jobs_user on jobs(user_id, created_at desc);
+
+-- A permission can be for a contract in place of the agent wallet.
+alter table delegations add column if not exists for_contract boolean not null default false;
+-- The limit for one action was 250 USD for every wallet. The product no longer limits the agent by default.
+alter table agent_wallets alter column max_action_usd set default 1000000;
+update agent_wallets set max_action_usd = 1000000 where max_action_usd = 250;

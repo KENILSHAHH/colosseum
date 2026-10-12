@@ -128,7 +128,7 @@ export function buildTools(ctx: ToolContext) {
       run(async ({ address: a }) => ({ user: a ?? address, positions: await aaveV4.getPositions(a ?? address), source: "https://api.aave.com/graphql" })), read),
 
     tool("evm_simulate", "Simulate EVM transactions from the agent wallet on live chain state. Read-only. Use it to test calldata or a contract deployment that you built.",
-      { chain: z.enum(EVM_CHAINS), transactions: z.array(TxShape).min(1).max(12) },
+      { chain: z.enum(EVM_CHAINS), transactions: z.array(TxShape).min(1).max(40) },
       run(({ chain, transactions }) => evm.simulate(chain, address, transactions.map(toEvmTx))), read),
 
     // ── The user's own wallet (linked wallet) ───────────────────────────────
@@ -147,18 +147,23 @@ export function buildTools(ctx: ToolContext) {
     tool("linked_wallet_request_permission", "Ask the user for a permission on the linked wallet. The user sees a card and signs it in the wallet. Request the smallest set that the task needs: exact contract addresses from official sources, exact function signatures, a short duration. For a token approval, the target is the token contract and the function is approve(address,uint256). The result is AWAITING_USER_SIGNATURE: stop and tell the user to sign. Do not send transactions before linked_wallet_overview shows the permission as active.",
       {
         chain: z.enum(delegation.DELEGATION_CHAINS),
-        targets: z.array(z.string().regex(/^0x[0-9a-fA-F]{40}$/)).min(1).max(8).describe("Contracts the agent can call"),
-        functions: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*\([^()]*\)$/)).min(1).max(12).describe("Function signatures with types only, for example supply(address,uint256,address,uint16)"),
+        targets: z.array(z.string().regex(/^0x[0-9a-fA-F]{40}$/)).min(1).max(40).describe("Contracts the wallet can be made to call"),
+        functions: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*\([^()]*\)$/)).min(1).max(60).describe("Function signatures with types only, for example supply(address,uint256,address,uint16)"),
         maxValueWei: z.string().regex(/^[0-9]+$/).optional().describe("Native value limit per call in wei. Default 0."),
-        days: z.number().int().min(1).max(30).optional().describe("Days until the permission ends. Default 7."),
+        days: z.number().int().min(1).max(365).optional().describe("Days until the permission ends. Default 7."),
+        delegate: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional().describe("A deployed contract that will use the permission in place of the agent wallet, for example your flash-loan receiver. Leave it out for the agent wallet."),
         reason: z.string().min(10).describe("One plain sentence for the user: what you will do with it"),
       },
       run(async (a) => {
         for (const t of a.targets) if (!(await evm.hasCode(a.chain, t as `0x${string}`))) throw new Error(`Target ${t} has no contract code on ${CHAINS[a.chain].name}. Check the address against the official source.`);
+        if (a.delegate && !(await evm.hasCode(a.chain, a.delegate as `0x${string}`))) throw new Error(`The delegate ${a.delegate} has no contract code on ${CHAINS[a.chain].name}. Deploy the contract first.`);
         const permission = await delegation.proposePermission(ctx.userId, a);
         ctx.onPermission(permission);
         return { status: "AWAITING_USER_SIGNATURE", permission, note: "The user sees a card to sign. Nothing can be sent from the linked wallet until the user signs." };
       })),
+
+    tool("linked_wallet_permission_context", "Get the signed delegation of an active permission, encoded for DelegationManager.redeemDelegations. Use it when a contract is the delegate: pass permissionContext to your contract (as calldata or in its storage) so it can make the user's wallet act, for example inside a flash-loan callback. For a permission of the agent wallet you do not need this: use linked_wallet_send_transactions.",
+      { permissionId: z.string() }, run(({ permissionId }) => delegation.permissionContext(permissionId, ctx.userId)), read),
 
     tool("linked_wallet_send_transactions", "Send contract calls from the user's linked wallet through active permissions. The agent wallet pays the gas, so it needs native gas on that chain. Each call must match one active permission (contract, function, value). The calls are simulated first and nothing is sent when the simulation reverts.",
       {
@@ -166,7 +171,7 @@ export function buildTools(ctx: ToolContext) {
         summary: z.string().min(10),
         sources: z.array(z.string()).min(1),
         usdValue: z.number().min(0).describe("Total USD value moved or put at risk"),
-        transactions: z.array(TxShape).min(1).max(12),
+        transactions: z.array(TxShape).min(1).max(40),
       },
       run(async (a) => {
         const linked = await delegation.getLinkedWallet(ctx.userId);
@@ -292,7 +297,7 @@ export function buildTools(ctx: ToolContext) {
         summary: z.string().min(10),
         sources: z.array(z.string()).min(1),
         usdValue: z.number().min(0).describe("Total USD value moved or put at risk"),
-        transactions: z.array(TxShape).min(1).max(12),
+        transactions: z.array(TxShape).min(1).max(40),
       },
       run(async (a) => {
         const txs = a.transactions.map(toEvmTx);
@@ -327,10 +332,10 @@ export function buildTools(ctx: ToolContext) {
           z.object({ type: z.literal("time"), at: z.string().describe("ISO 8601 time, for example 2026-10-14T09:00:00Z") }),
         ]),
         action: z.discriminatedUnion("type", [
-          z.object({ type: z.literal("transactions"), chain: z.enum(EVM_CHAINS), wallet: z.enum(["agent", "linked"]), transactions: z.array(TxShape).min(1).max(12) }),
-          z.object({ type: z.literal("aave_v4"), wallet: z.enum(["agent", "linked"]), steps: z.array(z.object({ action: z.enum(["supply", "borrow", "withdraw", "repay"]), reserveId: z.string().min(8), amount: z.string().regex(/^\d+(\.\d+)?$/), max: z.boolean().optional(), native: z.boolean().optional() })).min(1).max(6) }),
+          z.object({ type: z.literal("transactions"), chain: z.enum(EVM_CHAINS), wallet: z.enum(["agent", "linked"]), transactions: z.array(TxShape).min(1).max(40) }),
+          z.object({ type: z.literal("aave_v4"), wallet: z.enum(["agent", "linked"]), steps: z.array(z.object({ action: z.enum(["supply", "borrow", "withdraw", "repay"]), reserveId: z.string().min(8), amount: z.string().regex(/^\d+(\.\d+)?$/), max: z.boolean().optional(), native: z.boolean().optional() })).min(1).max(20) }),
         ]),
-        days: z.number().int().min(1).max(30).default(14).describe("Days until the job ends when the condition did not become true"),
+        days: z.number().int().min(1).max(365).default(30).describe("Days until the job ends when the condition did not become true"),
         usdValue: z.number().min(0).describe("USD value the action moves or puts at risk"),
         whatItDoes: z.string().min(20).describe("Plain words for the user: what happens when it fires, step by step, and what can go wrong"),
         allowRevertNow: z.boolean().optional().describe("Only for an action that cannot pass a simulation before the condition is true. You must have proved it on a fork."),
@@ -384,6 +389,6 @@ export function buildTools(ctx: ToolContext) {
 export const TOOL_NAMES = [
   "wallet_overview", "rates_compare", "hl_markets", "hl_account", "hl_outcomes", "sol_quote", "bridge_quote", "bridge_status", "aave_account", "aave_v4_markets", "aave_v4_account", "evm_simulate",
   "hl_open_position", "hl_close_position", "aave_supply_borrow", "bridge", "evm_send_transactions", "guard_register_aave", "aave_v4_action", "hl_deposit", "job_schedule", "job_list", "job_cancel",
-  "linked_wallet_overview", "linked_wallet_request_permission", "linked_wallet_send_transactions",
+  "linked_wallet_overview", "linked_wallet_request_permission", "linked_wallet_permission_context", "linked_wallet_send_transactions",
 ];
 export const allToolNames = () => TOOL_NAMES.map((t) => `mcp__${SERVER_NAME}__${t}`);

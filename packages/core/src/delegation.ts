@@ -8,7 +8,7 @@
 import { randomBytes } from "node:crypto";
 import { createDelegation, createExecution, ExecutionMode, getSmartAccountsEnvironment, ScopeType } from "@metamask/smart-accounts-kit";
 import { DelegationManager } from "@metamask/smart-accounts-kit/contracts";
-import { SIGNABLE_DELEGATION_TYPED_DATA } from "@metamask/smart-accounts-kit/utils";
+import { encodeDelegations, SIGNABLE_DELEGATION_TYPED_DATA } from "@metamask/smart-accounts-kit/utils";
 import { recoverMessageAddress, recoverTypedDataAddress, toFunctionSelector, type Address, type Hex } from "viem";
 import type { EvmTx } from "./adapters/evm";
 import { signToken, verifyToken } from "./crypto";
@@ -19,7 +19,7 @@ import { getOrCreateWallet, publicClient } from "./wallet";
 /** Chains with the delegation contracts and with a wallet that can do the EIP-7702 upgrade. */
 export const DELEGATION_CHAINS = ["ethereum", "arbitrum", "base"] as const;
 export type DelegationChain = (typeof DELEGATION_CHAINS)[number];
-const MAX_DAYS = 30;
+const MAX_DAYS = 365;
 /** Functions that can move tokens out of the wallet. The user sees a warning for each one. */
 const RISKY = /^(approve|transfer|transferFrom|setApprovalForAll|permit|increaseAllowance|safeTransferFrom|multicall|execute)\(/;
 
@@ -28,21 +28,25 @@ const manager = (chain: DelegationChain) => environment(chain).DelegationManager
 
 interface Row {
   id: string; user_id: string; owner: string; chain: DelegationChain; targets: string[]; selectors: string[]; max_value_wei: string;
-  expires_at: Date; reason: string; delegation: StoredDelegation; signature: string | null; status: string; created_at: Date;
+  expires_at: Date; reason: string; delegation: StoredDelegation; signature: string | null; status: string; created_at: Date; for_contract: boolean;
 }
 interface StoredDelegation { delegate: Address; delegator: Address; authority: Hex; caveats: { enforcer: Address; terms: Hex; args: Hex }[]; salt: Hex }
 
 export interface Permission {
   id: string; owner: string; chain: DelegationChain; chainId: number; chainName: string;
+  /** Who can use the permission: the agent wallet, or a contract (for example a flash-loan receiver). */
+  delegate: string; delegateIsContract: boolean;
   targets: string[]; functions: string[]; maxValueWei: string; expiresAt: string; reason: string;
   status: "pending" | "active" | "rejected" | "removed"; warnings: string[]; createdAt: string;
 }
 
 const view = (r: Row): Permission => ({
   id: r.id, owner: r.owner, chain: r.chain, chainId: CHAINS[r.chain].chainId!, chainName: CHAINS[r.chain].name,
+  delegate: r.delegation.delegate, delegateIsContract: !!r.for_contract,
   targets: r.targets, functions: r.selectors, maxValueWei: r.max_value_wei, expiresAt: r.expires_at.toISOString(), reason: r.reason,
   status: (r.status === "active" && r.expires_at.getTime() < Date.now() ? "removed" : r.status) as Permission["status"],
   warnings: [
+    ...(r.for_contract ? [`This permission is for the contract ${r.delegation.delegate}, not for the agent wallet. Anyone who can make that contract act can use it.`] : []),
     ...r.selectors.filter((s) => RISKY.test(s)).map((s) => `"${s}" can move tokens out of your wallet.`),
     ...(BigInt(r.max_value_wei) > 0n ? [`Each call can send up to ${Number(BigInt(r.max_value_wei)) / 1e18} of the native token.`] : []),
   ],
@@ -86,10 +90,14 @@ export async function isUpgraded(chain: DelegationChain, owner: string): Promise
 }
 
 // ── Permissions ──────────────────────────────────────────────────────────────
-export async function proposePermission(userId: string, args: { chain: DelegationChain; targets: string[]; functions: string[]; maxValueWei?: string; days?: number; reason: string }): Promise<Permission> {
+export async function proposePermission(userId: string, args: { chain: DelegationChain; targets: string[]; functions: string[]; maxValueWei?: string; days?: number; reason: string; delegate?: string }): Promise<Permission> {
   const owner = await getLinkedWallet(userId);
   if (!owner) throw new Error("The user has no linked wallet. Ask the user to link a wallet in the sidebar first.");
-  const agent = (await getOrCreateWallet(userId)).address;
+  // Default: the agent wallet uses the permission. A contract as the delegate lets that contract make the wallet act,
+  // for example a flash-loan receiver that repays and withdraws inside its callback.
+  const agentWallet = (await getOrCreateWallet(userId)).address;
+  const agent = (args.delegate ?? agentWallet) as Address;
+  const forContract = agent.toLowerCase() !== agentWallet.toLowerCase();
   const targets = [...new Set(args.targets.map((t) => t.toLowerCase()))];
   // "supply(address,uint256,address,uint16)": no spaces, no parameter names.
   const functions = [...new Set(args.functions.map((f) => f.replace(/\s+/g, "")))];
@@ -108,8 +116,8 @@ export async function proposePermission(userId: string, args: { chain: Delegatio
 
   const id = `perm_${randomBytes(8).toString("hex")}`;
   const [row] = await sql()<Row[]>`
-    insert into delegations (id, user_id, owner, chain, targets, selectors, max_value_wei, expires_at, reason, delegation)
-    values (${id}, ${userId}, ${owner}, ${args.chain}, ${sql().json(targets)}, ${sql().json(functions)}, ${maxValue.toString()}, ${new Date(expires * 1000)}, ${args.reason}, ${sql().json(delegation as never)})
+    insert into delegations (id, user_id, owner, chain, targets, selectors, max_value_wei, expires_at, reason, delegation, for_contract)
+    values (${id}, ${userId}, ${owner}, ${args.chain}, ${sql().json(targets)}, ${sql().json(functions)}, ${maxValue.toString()}, ${new Date(expires * 1000)}, ${args.reason}, ${sql().json(delegation as never)}, ${forContract})
     returning *`;
   return view(row!);
 }
@@ -167,7 +175,8 @@ export async function listPermissions(userId: string): Promise<Permission[]> {
 export async function wrapDelegatedTransactions(userId: string, chain: DelegationChain, txs: EvmTx[]): Promise<EvmTx[]> {
   const owner = await getLinkedWallet(userId);
   if (!owner) throw new Error("The user has no linked wallet.");
-  const rows = await sql()<Row[]>`select * from delegations where user_id = ${userId} and owner = ${owner} and chain = ${chain} and status = 'active' and expires_at > now() order by created_at desc`;
+  // A permission for a contract is not for the agent wallet, so it is not used here.
+  const rows = await sql()<Row[]>`select * from delegations where user_id = ${userId} and owner = ${owner} and chain = ${chain} and status = 'active' and not for_contract and expires_at > now() order by created_at desc`;
   return txs.map((tx, i) => {
     if (!tx.to) throw new Error("A linked wallet cannot deploy a contract through a permission.");
     const selector = tx.data.slice(0, 10).toLowerCase();
@@ -180,4 +189,20 @@ export async function wrapDelegatedTransactions(userId: string, chain: Delegatio
     } as never);
     return { to: manager(chain), data, value: "0", description: `From your wallet: ${tx.description}` };
   });
+}
+
+/**
+ * The signed delegation of an active permission, encoded for `DelegationManager.redeemDelegations`.
+ * A contract that is the delegate passes `permissionContext` as the first item of that call to make the wallet act.
+ */
+export async function permissionContext(id: string, userId: string) {
+  const r = await rowOf(id, userId);
+  if (!r || r.status !== "active" || !r.signature || r.expires_at.getTime() < Date.now()) throw new Error("The permission is not active. The user must grant it first.");
+  const signed = { ...r.delegation, signature: r.signature as Hex };
+  return {
+    permission: view(r), delegationManager: manager(r.chain),
+    permissionContext: encodeDelegations([signed] as never),
+    delegation: signed,
+    howToUse: "The delegate calls DelegationManager.redeemDelegations([permissionContext], [mode], [executionCallData]). mode 0x00…00 runs one call encoded as abi.encodePacked(target, value, callData). mode 0x01 followed by 31 zero bytes runs a batch encoded as abi.encode((address target, uint256 value, bytes callData)[]). The wallet of the user then makes the calls.",
+  };
 }

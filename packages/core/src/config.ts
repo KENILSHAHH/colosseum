@@ -15,7 +15,7 @@ const Env = z.object({
   PRIVY_AUTHORIZATION_KEY: z.string().optional(),
   // Gas sponsor (EIP-7702). One key, the same address on every EVM chain. It sends the transactions of the users and pays the gas.
   SPONSOR_PRIVATE_KEY: z.string().optional(),
-  SPONSOR_DAILY_TXS: z.coerce.number().default(40),
+  SPONSOR_DAILY_TXS: z.coerce.number().default(200),
   // Scheduled jobs: how often the server reads the conditions.
   JOB_INTERVAL_SECONDS: z.coerce.number().default(15),
   // The deposit converter: how often it looks, and the smallest value it converts.
@@ -38,7 +38,7 @@ const Env = z.object({
   PRICE_PROMPT_USD: z.coerce.number().default(0.01),
   PRICE_ACTION_USD: z.coerce.number().default(0),
   PRICE_GUARD_MINUTE_USD: z.coerce.number().default(0),
-  USER_DAILY_LLM_BUDGET_USD: z.coerce.number().default(15),
+  USER_DAILY_LLM_BUDGET_USD: z.coerce.number().default(50),
   USER_PROMPTS_PER_MINUTE: z.coerce.number().default(10),
 
   // RPC endpoints. Public defaults work for reads. Use paid endpoints for execution.

@@ -29,6 +29,7 @@ export function PermissionCard({ permission }: { permission: Permission }) {
       </div>
       <div className="space-y-2.5 px-4 py-3 text-[13px]">
         <p className="leading-relaxed">{permission.reason}</p>
+        {permission.delegateIsContract && <Row label="Used by"><code className="font-mono text-[12px]">{short(permission.delegate)}</code> (a contract)</Row>}
         <Row label="Contracts">{permission.targets.map((t) => <code key={t} className="mr-2 font-mono text-[12px]">{short(t)}</code>)}</Row>
         <Row label="Functions">{permission.functions.map((f) => <code key={f} className="mr-2 block font-mono text-[12px]">{f}</code>)}</Row>
         <Row label="Ends">in {days} {days === 1 ? "day" : "days"}</Row>

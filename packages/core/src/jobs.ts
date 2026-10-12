@@ -126,7 +126,7 @@ export async function checkJob(userId: string, args: { condition: JobCondition; 
 
 export async function createJob(userId: string, args: { name: string; condition: JobCondition; action: JobAction; days: number }): Promise<Job> {
   const id = `job_${randomBytes(8).toString("hex")}`;
-  const expires = new Date(Date.now() + Math.min(Math.max(args.days, 1), 30) * 86_400_000);
+  const expires = new Date(Date.now() + Math.min(Math.max(args.days, 1), 365) * 86_400_000);
   const [row] = await sql()<Row[]>`
     insert into jobs (id, user_id, name, condition, action, expires_at)
     values (${id}, ${userId}, ${args.name}, ${sql().json(args.condition as never)}, ${sql().json(args.action as never)}, ${expires})

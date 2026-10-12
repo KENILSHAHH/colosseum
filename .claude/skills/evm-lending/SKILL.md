@@ -58,7 +58,12 @@ function _isPositionManager(address user, address manager) internal view returns
   1. Ask for a permission on the linked wallet: the Spoke (`withdraw`, `repay`), the collateral token and the debt token (`approve`), and the swap contract of the route.
   2. One round, as one batch from the wallet: withdraw the collateral that the health factor allows, swap it to the debt token, repay. Each round raises the health factor, so the next round can withdraw more. Three or four rounds close a position with a health factor near 1.3.
   3. To do it at a price or a health factor, store the rounds with `job_schedule`. Use Aave v4 steps for repay and withdraw so the amounts are current when the job fires.
-- A flash-loan unwind in one transaction needs the flash-loan receiver to make the wallet act. That needs a delegation whose delegate is the receiver contract. The permission tool gives delegations to the agent wallet only, so use the rounds method today.
+- A flash-loan unwind in one transaction also works. Aave v4 has no flash loan of its own, so take the loan from Aave v3 (`flashLoanSimple`) or Morpho (`flashLoan`, no fee). Steps:
+  1. Write the receiver contract. In its callback it sends the debt token to the wallet, then calls `DelegationManager.redeemDelegations` so the wallet approves and repays, withdraws the collateral and sends it to the receiver. The receiver swaps the collateral and repays the loan. Send what is left to the wallet. Only the agent wallet may start it.
+  2. Deploy it and test it on a fork of the live chain.
+  3. Ask for a permission with `delegate` set to the receiver contract (`linked_wallet_request_permission`). The targets are the Spoke and the tokens, the functions are `repay`, `withdraw`, `approve`, `transfer`.
+  4. After the user signs, read the signed delegation with `linked_wallet_permission_context` and give `permissionContext` to the contract.
+  5. Run it now, or store the call with `job_schedule`.
 - Aave's own position managers (NativeTokenGateway, SignatureGateway, Giver, Taker, Config) are in `src/position-manager`. The API query `spokePositionManagers` lists the active ones for a spoke.
 
 ## Unwind design (this product)

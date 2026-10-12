@@ -26,6 +26,8 @@ export interface Permission {
   chain: string;
   chainId: number;
   chainName: string;
+  delegate: string;
+  delegateIsContract: boolean;
   targets: string[];
   functions: string[];
   maxValueWei: string;
