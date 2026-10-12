@@ -71,6 +71,7 @@ const TOOL_LABELS: Record<string, string> = {
   solana_overview: "Read Solana wallet",
   sol_swap: "Swap on Solana",
   solana_send_transaction: "Send on Solana",
+  wallet_sign_typed_data: "Sign a message",
   memory_save: "Save a lesson",
   memory_recall: "Read lessons",
   memory_forget: "Delete a lesson",

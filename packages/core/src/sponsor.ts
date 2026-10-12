@@ -24,7 +24,7 @@ import { sql } from "./db";
 import { CHAINS, type ChainKey } from "./registry/chains";
 import { legacyAccount, publicClient, viemChain, walletAccount } from "./wallet";
 
-export const SPONSORED_CHAINS = ["ethereum", "arbitrum", "base", "robinhood"] as const satisfies readonly ChainKey[];
+export const SPONSORED_CHAINS = ["ethereum", "arbitrum", "base", "robinhood", "polygon"] as const satisfies readonly ChainKey[];
 /** Deterministic deployment proxy (CREATE2). A delegated wallet cannot use CREATE through `execute`, so a deployment goes through it. */
 const CREATE2_DEPLOYER = "0x4e59b44847b379578588920cA78FbF26c0B4956C" as const;
 

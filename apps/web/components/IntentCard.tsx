@@ -16,6 +16,7 @@ const TITLES: Record<string, string> = {
   hl_action: "Hyperliquid action",
   sol_swap: "Swap on Solana",
   solana_tx: "Solana transaction",
+  sign_typed_data: "Sign a message",
   hl_deposit: "Deposit to Hyperliquid",
   bridge: "Bridge",
   evm_transactions: "Sign transactions",

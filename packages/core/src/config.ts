@@ -53,6 +53,7 @@ const Env = z.object({
   RPC_ROBINHOOD: z.string().default("https://rpc.mainnet.chain.robinhood.com"),
   RPC_TEMPO: z.string().default("https://rpc.tempo.xyz"),
   RPC_HYPEREVM: z.string().default("https://rpc.hyperliquid.xyz/evm"),
+  RPC_POLYGON: z.string().default("https://polygon-bor-rpc.publicnode.com"),
   RPC_SOLANA: z.string().default("https://api.mainnet-beta.solana.com"),
 
   // Signers held by the API and guard processes only.

@@ -15,6 +15,7 @@ export type IntentKind =
   | "hl_action"
   | "sol_swap"
   | "solana_tx"
+  | "sign_typed_data"
   | "guard_create"
   | "job_create"
   | "aave_supply_borrow"

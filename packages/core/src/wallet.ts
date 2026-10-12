@@ -71,7 +71,7 @@ export async function legacyAccount(userId: string) {
 export function viemChain(chain: ChainKey) {
   const c = CHAINS[chain];
   if (c.vm !== "evm" || !c.chainId) throw new Error(`${c.name} is not an EVM chain.`);
-  return defineChain({ id: c.chainId, name: c.name, nativeCurrency: { name: "native", symbol: chain === "tempo" ? "USD" : chain === "hyperevm" ? "HYPE" : "ETH", decimals: 18 }, rpcUrls: { default: { http: [c.rpc()] } } });
+  return defineChain({ id: c.chainId, name: c.name, nativeCurrency: { name: "native", symbol: chain === "tempo" ? "USD" : chain === "hyperevm" ? "HYPE" : chain === "polygon" ? "POL" : "ETH", decimals: 18 }, rpcUrls: { default: { http: [c.rpc()] } } });
 }
 
 export const publicClient = (chain: ChainKey) => createPublicClient({ chain: viemChain(chain), transport: http() });

@@ -51,7 +51,7 @@ const fail = (err: unknown) => ({ content: [{ type: "text" as const, text: `Erro
 const RISK_DISCLOSURE =
   "A guard reduces liquidation risk. It cannot guarantee a result. Price gaps, oracle delay and network congestion can cause a liquidation before the guard acts.";
 
-const EVM_CHAINS = ["ethereum", "arbitrum", "base", "robinhood", "tempo", "hyperevm"] as const;
+const EVM_CHAINS = ["ethereum", "arbitrum", "base", "robinhood", "tempo", "hyperevm", "polygon"] as const;
 const TxShape = z.object({
   to: z.string().regex(/^0x[0-9a-fA-F]{40}$/).nullable().describe("Target contract. null deploys a contract."),
   data: z.string().regex(/^0x[0-9a-fA-F]*$/),
@@ -505,6 +505,15 @@ export function buildTools(ctx: ToolContext) {
         return act("solana_tx", { transaction: a.transaction }, { venue: "Solana", chain: "Solana", summary: a.summary, simulation: { ok: true, unitsConsumed: sim.unitsConsumed }, ...(sw.enabled ? {} : { warning: "The server signer is not on the Solana wallet yet." }) }, a.usdValue);
       })),
 
+    tool("wallet_sign_typed_data", "Sign EIP-712 typed data with the user's wallet and get the signature back, for off-chain orders and logins: Polymarket (ClobAuth to get API keys, Order to place a bet), CoW Swap orders, and other venues that take signed messages. The signature comes back in the result (after the user confirms when automatic execution is off). Never for token permits (Permit, Permit2) or delegations: those are refused because they give away funds.",
+      { typedData: z.object({ domain: z.record(z.string(), z.unknown()), types: z.record(z.string(), z.array(z.object({ name: z.string(), type: z.string() }))), primaryType: z.string(), message: z.record(z.string(), z.unknown()) }), summary: z.string().min(10), usdValue: z.number().min(0) },
+      run(async (a) => {
+        const blocked = /^(Permit|PermitSingle|PermitBatch|PermitTransferFrom|PermitBatchTransferFrom|PermitWitnessTransferFrom|Delegation|Authorization|ReceiveWithAuthorization|TransferWithAuthorization)$/i;
+        if (blocked.test(a.typedData.primaryType) || /permit2/i.test(String(a.typedData.domain.name ?? ""))) throw new Error(`Signing ${a.typedData.primaryType} is refused: it can give away the user's funds.`);
+        const { EIP712Domain: _drop, ...types } = a.typedData.types as Record<string, unknown>;
+        return act("sign_typed_data", { typedData: { ...a.typedData, types } }, { venue: String(a.typedData.domain.name ?? "Signature"), summary: a.summary, primaryType: a.typedData.primaryType, signer: address }, a.usdValue);
+      })),
+
     tool("hl_spot_order", "Buy or sell on a Hyperliquid spot pair (for example XAUT0/USDC for gold, UBTC/USDC, HYPE/USDC) with one IOC order from the Hyperliquid account. Hyperliquid needs at least 10 USD and one lot per order.",
       { pair: z.string(), side: z.enum(["buy", "sell"]), usd: z.number().positive(), slippageBps: z.number().int().min(1).max(500).optional() },
       run(async (a) => {
@@ -584,7 +593,7 @@ export function buildTools(ctx: ToolContext) {
 
 export const TOOL_NAMES = [
   "wallet_overview", "rates_compare", "hl_markets", "hl_account", "hl_outcomes", "sol_quote", "bridge_quote", "bridge_status", "aave_account", "aave_v4_markets", "aave_v4_account", "evm_simulate",
-  "hl_open_position", "hl_close_position", "hl_set_tpsl", "hl_open_orders", "hl_cancel_order", "aave_supply_borrow", "bridge", "evm_send_transactions", "guard_register_aave", "aave_v4_action", "hl_deposit", "job_schedule", "job_list", "job_cancel", "flash_run", "aave_v4_unwind", "swap", "hl_spot_order", "hl_action", "hl_info", "solana_overview", "sol_swap", "solana_send_transaction", "memory_save", "memory_recall", "memory_forget",
+  "hl_open_position", "hl_close_position", "hl_set_tpsl", "hl_open_orders", "hl_cancel_order", "aave_supply_borrow", "bridge", "evm_send_transactions", "guard_register_aave", "aave_v4_action", "hl_deposit", "job_schedule", "job_list", "job_cancel", "flash_run", "aave_v4_unwind", "swap", "hl_spot_order", "hl_action", "hl_info", "solana_overview", "sol_swap", "solana_send_transaction", "wallet_sign_typed_data", "memory_save", "memory_recall", "memory_forget",
   "linked_wallet_overview", "linked_wallet_ask_to_sign", "linked_wallet_request_permission", "linked_wallet_permission_context", "linked_wallet_send_transactions",
 ];
 export const allToolNames = () => TOOL_NAMES.map((t) => `mcp__${SERVER_NAME}__${t}`);

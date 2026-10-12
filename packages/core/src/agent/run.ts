@@ -38,6 +38,8 @@ const TERMINAL_API_HOSTS = [
   "api.relay.link", "li.quest", "app.across.to", "lite-api.jup.ag", "quote-api.dflow.net",
   // Tempo and MPP
   "mpp.dev", "tempo.xyz",
+  // Prediction markets
+  "gamma-api.polymarket.com", "clob.polymarket.com", "data-api.polymarket.com", "quote-api.dflow.net", "prediction-markets-api.dflow.net",
   // Swap and price APIs
   "api.1inch.dev", "api.0x.org", "api.paraswap.io", "apiv5.paraswap.io", "api.odos.xyz", "api.cow.fi", "api.uniswap.org", "api.coingecko.com", "hermes.pyth.network",
   // Contract sources and verification
@@ -50,7 +52,7 @@ const TERMINAL_API_HOSTS = [
 /** The API hosts plus the RPC host of each chain, so a script and a local fork (anvil) can read the chains. */
 function terminalAllowedDomains(): string[] {
   const c = config();
-  const rpcs = [c.RPC_ETHEREUM, c.RPC_ARBITRUM, c.RPC_BASE, c.RPC_ROBINHOOD, c.RPC_TEMPO, c.RPC_HYPEREVM, c.RPC_SOLANA].flatMap((url) => {
+  const rpcs = [c.RPC_ETHEREUM, c.RPC_ARBITRUM, c.RPC_BASE, c.RPC_ROBINHOOD, c.RPC_TEMPO, c.RPC_HYPEREVM, c.RPC_POLYGON, c.RPC_SOLANA].flatMap((url) => {
     try {
       return [new URL(url).hostname];
     } catch {

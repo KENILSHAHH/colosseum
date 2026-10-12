@@ -12,7 +12,7 @@ import { sendTransactions } from "./evm";
 import { encodeFunctionData, erc20Abi } from "viem";
 import { HL_BRIDGE_ARBITRUM } from "../adapters/hyperliquid";
 import { USDC } from "../registry/chains";
-import { getOrCreateWallet } from "../wallet";
+import { getOrCreateWallet, walletAccount } from "../wallet";
 import { getSolanaWallet, solanaSign, solanaSignAndSend } from "../privy";
 import * as jupiter from "../adapters/jupiter";
 import { executeOpen, executeReduce, executeCancel, executeHlAction, executeSpotOrder, executeTpsl } from "./hyperliquid";
@@ -63,6 +63,11 @@ async function run(intent: Intent, address: string): Promise<Record<string, unkn
       if (!sw?.enabled) throw new Error("The Solana wallet has no server signer yet.");
       const signature = await solanaSignAndSend(sw.walletId, p.transaction);
       return { signature, explorer: `https://solscan.io/tx/${signature}` };
+    }
+    case "sign_typed_data": {
+      const account = await walletAccount(intent.userId);
+      const signature = await account.signTypedData(p.typedData);
+      return { signature, signer: account.address };
     }
     case "hl_action":
       return executeHlAction(intent.userId, p.method, p.params);

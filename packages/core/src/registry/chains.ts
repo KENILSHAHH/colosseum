@@ -7,6 +7,7 @@ export type ChainKey =
   | "robinhood"
   | "tempo"
   | "hyperevm"
+  | "polygon"
   | "hyperliquid"
   | "solana";
 
@@ -56,6 +57,11 @@ export const CHAINS: Record<ChainKey, ChainInfo> = {
     key: "hyperevm", name: "HyperEVM", vm: "evm", chainId: 999, relayId: 999, llamaName: "Hyperliquid L1",
     explorer: "https://hyperevmscan.io", rpc: () => config().RPC_HYPEREVM, policyBit: 5,
     source: "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/hyperevm",
+  },
+  polygon: {
+    key: "polygon", name: "Polygon", vm: "evm", chainId: 137, relayId: 137, llamaName: "Polygon",
+    explorer: "https://polygonscan.com", rpc: () => config().RPC_POLYGON, policyBit: 8,
+    source: "https://docs.polygon.technology/pos/reference/rpc-endpoints/",
   },
   hyperliquid: {
     key: "hyperliquid", name: "Hyperliquid (HyperCore)", vm: "hypercore", relayId: 1337,
