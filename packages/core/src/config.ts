@@ -6,7 +6,7 @@ const Env = z.object({
   CLAUDE_MODEL: z.string().default("claude-opus-5-5"),
   CLAUDE_GUARD_MODEL: z.string().default("claude-haiku-5-5"),
   // Reasoning effort of the chat agent. Higher is slower and costs more, and it finds more.
-  CLAUDE_EFFORT: z.enum(["low", "medium", "high", "xhigh", "max"]).default("high"),
+  CLAUDE_EFFORT: z.enum(["low", "medium", "high", "xhigh", "max"]).default("medium"),
 
   // Privy sign-in. The app id is public. The app secret stays on the server.
   PRIVY_APP_ID: z.string().optional(),
