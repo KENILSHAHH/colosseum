@@ -48,6 +48,14 @@ const TOOL_LABELS: Record<string, string> = {
   bridge_status: "Check bridge status",
   wallet_overview: "Read agent wallet",
   evm_send_transactions: "Send transactions",
+  aave_v4_markets: "Read Aave v4 markets",
+  aave_v4_account: "Read Aave v4 position",
+  aave_v4_action: "Aave v4 action",
+  hl_deposit: "Deposit to Hyperliquid",
+  job_schedule: "Schedule a job",
+  job_list: "List jobs",
+  job_cancel: "Cancel a job",
+  linked_wallet_permission_context: "Read a permission",
   linked_wallet_overview: "Read your wallet",
   linked_wallet_request_permission: "Ask for a permission",
   linked_wallet_send_transactions: "Send from your wallet",
@@ -308,9 +316,18 @@ function MessageView({ message, streaming }: { message: Message; streaming: bool
     );
   }
   const waiting = streaming && message.parts.length === 0;
+  // Steps that follow each other become one line. Text and cards stay as they are.
+  type ToolPart = Extract<Part, { kind: "tool" }>;
+  const blocks: (Exclude<Part, ToolPart> | { kind: "steps"; steps: ToolPart[] })[] = [];
+  for (const p of message.parts) {
+    const last = blocks[blocks.length - 1];
+    if (p.kind === "tool" && last?.kind === "steps") last.steps.push(p);
+    else blocks.push(p.kind === "tool" ? { kind: "steps", steps: [p] } : p);
+  }
   return (
     <div className="mb-8">
-      {message.parts.map((p, i) => {
+      {blocks.map((p, i) => {
+        if (p.kind === "steps") return <StepsLine key={p.steps[0]!.id} steps={p.steps} live={streaming && i === blocks.length - 1} />;
         if (p.kind === "text")
           return (
             <div key={i} className="prose-agent">
@@ -319,7 +336,6 @@ function MessageView({ message, streaming }: { message: Message; streaming: bool
               </ReactMarkdown>
             </div>
           );
-        if (p.kind === "tool") return <ToolRow key={p.id} part={p} />;
         if (p.kind === "permission") return <PermissionCard key={p.permission.id} permission={p.permission} />;
         return <IntentCard key={p.intent.id} intent={p.intent} />;
       })}
@@ -336,6 +352,45 @@ function MessageView({ message, streaming }: { message: Message; streaming: bool
           Charged {usd(message.cost.chargedUsd)} · model cost {usd(message.cost.costUsd)}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * The steps of the agent as one line. While the agent works, the line shows the step that runs now.
+ * After that it rotates through the steps. A click opens the full list.
+ */
+function StepsLine({ steps, live }: { steps: Extract<Part, { kind: "tool" }>[]; live: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [turn, setTurn] = useState(0);
+  useEffect(() => {
+    if (live || open || steps.length < 2) return;
+    const t = setInterval(() => setTurn((n) => n + 1), 2200);
+    return () => clearInterval(t);
+  }, [live, open, steps.length]);
+  const shown = live ? steps[steps.length - 1]! : steps[turn % steps.length]!;
+  const detail = toolDetail(shown.name, shown.input);
+  const pending = steps.some((s) => s.result === undefined);
+  const failed = steps.filter((s) => s.isError).length;
+  return (
+    <div className="my-2">
+      <button onClick={() => setOpen((o) => !o)} aria-expanded={open} title={open ? "Hide the steps" : "Show the steps"} className="flex w-full max-w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left text-[13px] text-dim hover:bg-panel">
+        <Wrench className={`size-3.5 shrink-0 ${pending ? "dot text-accent" : "text-faint"}`} />
+        {open ? (
+          <span className="min-w-0 flex-1">Steps</span>
+        ) : (
+          <span key={shown.id} className="step-in flex min-w-0 flex-1 items-center gap-2">
+            <span className="shrink-0">{TOOL_LABELS[shown.name] ?? shown.name}</span>
+            {detail && <span className="truncate font-mono text-[12px] text-faint">{detail}</span>}
+          </span>
+        )}
+        <span className="shrink-0 text-[12px] text-faint">
+          {steps.length} {steps.length === 1 ? "step" : "steps"}
+          {failed > 0 && <span className="text-bad"> · {failed} failed</span>}
+        </span>
+        <ChevronRight className={`size-3 shrink-0 text-faint transition ${open ? "rotate-90" : ""}`} />
+      </button>
+      {open && <div className="ml-2 border-l border-line pl-2">{steps.map((s) => <ToolRow key={s.id} part={s} />)}</div>}
     </div>
   );
 }

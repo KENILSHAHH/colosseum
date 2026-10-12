@@ -200,3 +200,17 @@ body {
 .dot {
   animation: pulse-dot 1.2s ease-in-out infinite;
 }
+
+/* A step of the agent slides into the one-line display. */
+.step-in {
+  animation: step-in 0.35s ease-out;
+}
+@keyframes step-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .step-in {
+    animation: none;
+  }
+}
