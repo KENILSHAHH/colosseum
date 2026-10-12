@@ -56,7 +56,7 @@ const auth = async (c: Context<Env>, next: () => Promise<void>) => {
   c.set("userId", claims.sub);
   await next();
 };
-for (const p of ["/me", "/wallet", "/wallet/*", "/positions", "/chat", "/intents", "/intents/*", "/guards", "/guards/*", "/billing", "/billing/*", "/permissions", "/permissions/*", "/deposit", "/deposit/*", "/jobs", "/jobs/*"]) app.use(p, auth);
+for (const p of ["/me", "/wallet", "/wallet/*", "/positions", "/chat", "/chat/*", "/intents", "/intents/*", "/guards", "/guards/*", "/billing", "/billing/*", "/permissions", "/permissions/*", "/deposit", "/deposit/*", "/jobs", "/jobs/*"]) app.use(p, auth);
 
 // ── Account and agent wallet ───────────────────────────────────────────────
 app.get("/me", async (c) => {
