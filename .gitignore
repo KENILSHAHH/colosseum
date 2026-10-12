@@ -15,3 +15,5 @@ kb/mirror
 workspaces
 *.log
 .DS_Store
+*.tsbuildinfo
+__pycache__
