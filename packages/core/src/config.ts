@@ -36,7 +36,7 @@ const Env = z.object({
   PRICE_PROMPT_USD: z.coerce.number().default(0.01),
   PRICE_ACTION_USD: z.coerce.number().default(0),
   PRICE_GUARD_MINUTE_USD: z.coerce.number().default(0),
-  USER_DAILY_LLM_BUDGET_USD: z.coerce.number().default(5),
+  USER_DAILY_LLM_BUDGET_USD: z.coerce.number().default(15),
   USER_PROMPTS_PER_MINUTE: z.coerce.number().default(10),
 
   // RPC endpoints. Public defaults work for reads. Use paid endpoints for execution.

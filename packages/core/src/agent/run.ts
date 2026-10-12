@@ -107,7 +107,8 @@ export async function* runChatAgent(args: RunArgs): AsyncGenerator<AgentEvent> {
     sandbox: { enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, network: { allowedDomains: terminalAllowedDomains(), allowLocalBinding: true } },
     includePartialMessages: true,
     maxTurns: 40,
-    maxBudgetUsd: Math.max(0.5, c.USER_DAILY_LLM_BUDGET_USD / 2),
+    // One prompt can use at most 2.5 USD of model cost, also when the daily budget is higher.
+    maxBudgetUsd: Math.min(2.5, Math.max(0.5, c.USER_DAILY_LLM_BUDGET_USD / 2)),
     // The subprocess environment holds no secret. It reaches Claude through the local proxy with a session token.
     env: {
       PATH: process.env.PATH,
