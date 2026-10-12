@@ -41,6 +41,22 @@ function inOrder<T>(chain: string, job: () => Promise<T>): Promise<T> {
   return next;
 }
 
+/**
+ * A public RPC sometimes answers a read with a node error just after a new block ("archive request", "header not found").
+ * That is not a revert. The read is tried again. A revert is not tried again.
+ */
+async function withRetry<T>(read: () => Promise<T>, attempts = 4): Promise<T> {
+  for (let i = 1; ; i++) {
+    try {
+      return await read();
+    } catch (err) {
+      const text = err instanceof Error ? `${err.message} ${(err as { details?: string }).details ?? ""}` : String(err);
+      if (i >= attempts || /revert/i.test(text) || !/archive|header not found|missing trie node|timeout|rate limit|429|50\d/i.test(text)) throw err;
+      await new Promise((r) => setTimeout(r, 1500 * i));
+    }
+  }
+}
+
 export interface SponsoredResult { hash: Hex; block: number; gasUsed: string; deployed: (Address | null)[] }
 
 /**
@@ -98,7 +114,7 @@ export async function sendSponsored(userId: string, chain: ChainKey, txs: EvmTx[
       if (r.status !== "success") throw new Error(`The wallet upgrade ${h} reverted.`);
     }
     // A dry run finds a failing call before the sponsor pays for it.
-    const gas = await reader.estimateGas({ account: relayer.account, to: manager, data });
+    const gas = await withRetry(() => reader.estimateGas({ account: relayer.account, to: manager, data }));
     const hash = await relayer.sendTransaction({ to: manager, data, gas: (gas * 13n) / 10n });
     const receipt = await reader.waitForTransactionReceipt({ hash, timeout: 180_000 });
     await sql()`insert into sponsored_txs (user_id, chain, hash, gas_cost_wei, success) values (${userId}, ${chain}, ${hash}, ${(receipt.gasUsed * receipt.effectiveGasPrice).toString()}, ${receipt.status === "success"})`;

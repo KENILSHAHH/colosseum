@@ -41,8 +41,9 @@ const Env = z.object({
 
   // RPC endpoints. Public defaults work for reads. Use paid endpoints for execution.
   RPC_ETHEREUM: z.string().default("https://ethereum-rpc.publicnode.com"),
-  RPC_ARBITRUM: z.string().default("https://arbitrum-one-rpc.publicnode.com"),
-  RPC_BASE: z.string().default("https://base-rpc.publicnode.com"),
+  RPC_ARBITRUM: z.string().default("https://arb1.arbitrum.io/rpc"),
+  // The publicnode endpoint refuses a gas estimate for a sponsored transaction ("archive request"). The official endpoints accept it.
+  RPC_BASE: z.string().default("https://mainnet.base.org"),
   RPC_ROBINHOOD: z.string().default("https://rpc.mainnet.chain.robinhood.com"),
   RPC_TEMPO: z.string().default("https://rpc.tempo.xyz"),
   RPC_HYPEREVM: z.string().default("https://rpc.hyperliquid.xyz/evm"),
