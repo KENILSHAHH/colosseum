@@ -76,7 +76,7 @@ export function WalletRequestCard({ request }: { request: WalletRequest }) {
       </div>
       {!finished && (
         <div className="border-t border-line px-4 py-2.5">
-          <button disabled={step !== null} onClick={sign} className="flex items-center gap-2 rounded-lg bg-accent px-3 py-1.5 text-[13px] font-medium text-black hover:brightness-110 disabled:opacity-60">
+          <button disabled={step !== null} onClick={sign} className="flex items-center gap-2 rounded-lg bg-accent px-3 py-1.5 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-60">
             {step && <Loader2 className="size-3.5 animate-spin" />}
             {step ?? (wallet ? `Sign ${request.transactions.length} ${request.transactions.length === 1 ? "transaction" : "transactions"}` : "Connect your wallet")}
           </button>

@@ -30,7 +30,7 @@ export function Sidebar({ session, onNewChat }: { session: ReturnType<typeof use
         </button>
         {!collapsed && (
           <>
-            <div className="grid size-7 place-items-center rounded-lg bg-accent text-sm font-semibold text-black">◆</div>
+            <div className="grid size-7 place-items-center rounded-lg bg-gradient-to-br from-[#9945FF] to-[#14F195] text-sm font-semibold text-black">◆</div>
             <div className="text-[15px] font-semibold tracking-tight">DeFi Agent</div>
           </>
         )}
@@ -42,14 +42,14 @@ export function Sidebar({ session, onNewChat }: { session: ReturnType<typeof use
 
       <div className={`flex-1 space-y-1 overflow-y-auto pb-4 ${collapsed ? "px-2" : "px-3"}`}>
         {collapsed && !signedIn && (
-          <button onClick={() => (session.authenticated ? set(false) : session.signIn())} title="Sign in" aria-label="Sign in" className="mx-auto grid size-10 place-items-center rounded-lg bg-accent text-black hover:brightness-110">
+          <button onClick={() => (session.authenticated ? set(false) : session.signIn())} title="Sign in" aria-label="Sign in" className="mx-auto grid size-10 place-items-center rounded-lg bg-accent text-white hover:brightness-110">
             {session.authenticated ? <Loader2 className="size-4 animate-spin" /> : <LogIn className="size-4" />}
           </button>
         )}
 
         {!collapsed && !session.authenticated && (
           <Section title="Account">
-            <button disabled={!session.ready} onClick={session.signIn} className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-black hover:brightness-110 disabled:opacity-60">
+            <button disabled={!session.ready} onClick={session.signIn} className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white hover:brightness-110 disabled:opacity-60">
               Sign in or sign up
             </button>
           </Section>
@@ -60,7 +60,7 @@ export function Sidebar({ session, onNewChat }: { session: ReturnType<typeof use
             {session.error ? (
               <>
                 <p className="text-[12px] text-bad">{session.error}</p>
-                <button onClick={session.signIn} className="mt-2 flex w-full items-center justify-center rounded-lg bg-accent px-3 py-2 text-sm font-medium text-black hover:brightness-110">
+                <button onClick={session.signIn} className="mt-2 flex w-full items-center justify-center rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white hover:brightness-110">
                   Try again
                 </button>
               </>

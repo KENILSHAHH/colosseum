@@ -44,11 +44,16 @@
   --color-ink: #e8eaed;
   --color-dim: #9aa1ab;
   --color-faint: #666d78;
-  --color-accent: #d97757;
-  --color-accent-soft: #d9775722;
+  --color-accent: #9945ff;
+  --color-accent-soft: #9945ff33;
   --color-good: #4cc38a;
   --color-warn: #e5b454;
   --color-bad: #ef6f6c;
+  /* Heavier text everywhere. The font has Regular, Medium and Bold, so each step lands on the next file. */
+  --font-weight-normal: 500;
+  --font-weight-medium: 600;
+  --font-weight-semibold: 700;
+  --font-weight-bold: 700;
   --font-sans: "Coinbase Sans", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "Coinbase Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
@@ -59,6 +64,7 @@ body {
   background: var(--color-bg);
   color: var(--color-ink);
   font-family: var(--font-sans);
+  font-weight: 500;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -82,13 +88,13 @@ body {
   will-change: transform, opacity;
   animation: aurora-drift var(--t) ease-in-out var(--d) infinite alternate, aurora-pulse calc(var(--t) * 0.7) ease-in-out var(--d) infinite alternate;
 }
-.aurora span:nth-child(1) { --c: #8a4cd9; --t: 22s; --d: -4s; left: -10vw; top: -10vh; } /* violet */
-.aurora span:nth-child(2) { --c: #4b4fd9; --t: 25s; --d: -8s; left: 40vw; top: -15vh; } /* indigo */
-.aurora span:nth-child(3) { --c: #2f6bd9; --t: 28s; --d: -12s; left: 75vw; top: 5vh; } /* blue */
-.aurora span:nth-child(4) { --c: #2fbf6a; --t: 31s; --d: -16s; left: 70vw; top: 50vh; } /* green */
-.aurora span:nth-child(5) { --c: #c8c23c; --t: 34s; --d: -20s; left: 35vw; top: 55vh; } /* yellow */
-.aurora span:nth-child(6) { --c: #e0882f; --t: 37s; --d: -24s; left: 0vw; top: 50vh; } /* orange */
-.aurora span:nth-child(7) { --c: #d9423f; --t: 40s; --d: -28s; left: -15vw; top: 20vh; } /* red */
+.aurora span:nth-child(1) { --c: #9945ff; --t: 22s; --d: -4s; left: -10vw; top: -10vh; } /* purple */
+.aurora span:nth-child(2) { --c: #7b61ff; --t: 25s; --d: -8s; left: 40vw; top: -15vh; } /* violet */
+.aurora span:nth-child(3) { --c: #00c2ff; --t: 28s; --d: -12s; left: 75vw; top: 5vh; } /* blue */
+.aurora span:nth-child(4) { --c: #14f195; --t: 31s; --d: -16s; left: 70vw; top: 50vh; } /* green */
+.aurora span:nth-child(5) { --c: #5b8def; --t: 34s; --d: -20s; left: 35vw; top: 55vh; } /* soft blue */
+.aurora span:nth-child(6) { --c: #19d3a2; --t: 37s; --d: -24s; left: 0vw; top: 50vh; } /* teal */
+.aurora span:nth-child(7) { --c: #b259ff; --t: 40s; --d: -28s; left: -15vw; top: 20vh; } /* light purple */
 
 /* A dark edge keeps the text easy to read. */
 .aurora::after {
@@ -154,7 +160,7 @@ body {
   color: var(--color-accent);
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: #d9775766;
+  text-decoration-color: #9945ff66;
 }
 .prose-agent code {
   font-family: var(--font-mono);
@@ -203,7 +209,7 @@ body {
   border-bottom: 0;
 }
 .prose-agent strong {
-  font-weight: 600;
+  font-weight: 700;
 }
 
 @keyframes pulse-dot {

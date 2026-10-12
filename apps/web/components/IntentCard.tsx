@@ -175,7 +175,7 @@ export function IntentCard({ intent: initial }: { intent: Intent }) {
             <button onClick={reject} disabled={busy} className="rounded-lg border border-line px-3 py-1.5 text-sm text-dim hover:text-ink disabled:opacity-40">
               Reject
             </button>
-            <button onClick={confirm} disabled={busy} className="flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-1.5 text-sm font-medium text-black hover:brightness-110 disabled:opacity-60">
+            <button onClick={confirm} disabled={busy} className="flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-1.5 text-sm font-medium text-white hover:brightness-110 disabled:opacity-60">
               {busy && <Loader2 className="size-3.5 animate-spin" />}
               Confirm
             </button>

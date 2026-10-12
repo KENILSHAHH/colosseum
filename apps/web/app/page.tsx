@@ -281,7 +281,7 @@ export default function Page() {
           onClick={toggleVoice}
           disabled={!session.signedIn || busy}
           aria-pressed={listening}
-          className={`grid size-9 place-items-center rounded-xl disabled:opacity-30 ${listening ? "dot bg-accent text-black" : "bg-raised text-dim hover:text-ink"}`}
+          className={`grid size-9 place-items-center rounded-xl disabled:opacity-30 ${listening ? "dot bg-accent text-white" : "bg-raised text-dim hover:text-ink"}`}
           title={listening ? "Stop listening" : "Speak your request"}
         >
           <Mic className="size-4" />
@@ -293,7 +293,7 @@ export default function Page() {
         </button>
       )}
       {(!busy || input.trim()) && (
-        <button type="submit" disabled={!input.trim() || !session.signedIn} className="grid size-9 place-items-center rounded-xl bg-accent text-black disabled:opacity-30" title={busy ? "Send to the running agent" : "Send"}>
+        <button type="submit" disabled={!input.trim() || !session.signedIn} className="grid size-9 place-items-center rounded-xl bg-accent text-white disabled:opacity-30" title={busy ? "Send to the running agent" : "Send"}>
           <ArrowUp className="size-4" />
         </button>
       )}

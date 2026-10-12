@@ -38,7 +38,7 @@ export function MenuItem({ icon: Icon, label, value, badge, defaultOpen = false,
         aria-expanded={open}
         className={`group flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-[14px] hover:bg-raised ${open ? "bg-raised/60" : ""}`}
       >
-        <span className={`grid size-7 shrink-0 place-items-center rounded-md ${open ? "bg-accent text-black" : "bg-raised text-dim group-hover:text-ink"}`}>
+        <span className={`grid size-7 shrink-0 place-items-center rounded-md ${open ? "bg-accent text-white" : "bg-raised text-dim group-hover:text-ink"}`}>
           <Icon className="size-4" />
         </span>
         <span className="min-w-0 flex-1 truncate font-medium">{label}</span>

@@ -76,7 +76,7 @@ export function DepositPanel({ me }: { me: Me }) {
           </select>
         </div>
         <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="Amount" className="mt-1.5 w-full rounded-md border border-line bg-raised px-2.5 py-1.5 font-mono text-[13px] outline-none placeholder:text-faint focus:border-faint" />
-        <button disabled={step !== null || (!!wallet && !Number(amount))} onClick={deposit} className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-3 py-1.5 text-[13px] font-medium text-black hover:brightness-110 disabled:opacity-50">
+        <button disabled={step !== null || (!!wallet && !Number(amount))} onClick={deposit} className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-3 py-1.5 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-50">
           {step && <Loader2 className="size-3.5 animate-spin" />}
           {step ?? (wallet ? `Deposit from ${short(wallet.address)}` : "Connect a wallet")}
         </button>

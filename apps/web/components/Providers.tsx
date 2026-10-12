@@ -21,7 +21,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       appId={PRIVY_APP_ID}
       config={{
         // The Privy dashboard sets the login methods. Each user gets one embedded wallet at the first login.
-        appearance: { theme: "dark", accentColor: "#d97757" },
+        appearance: { theme: "dark", accentColor: "#9945FF" },
         embeddedWallets: { ethereum: { createOnLogin: "all-users" } },
       }}
     >

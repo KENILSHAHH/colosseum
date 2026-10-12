@@ -42,7 +42,7 @@ export function PermissionCard({ permission }: { permission: Permission }) {
       </div>
       {status === "pending" && (
         <div className="flex items-center gap-2 border-t border-line px-4 py-2.5">
-          <button disabled={busy} onClick={async () => { await wallet.grant(permission.id, setStep); setStep(null); }} className="flex items-center gap-2 rounded-lg bg-accent px-3 py-1.5 text-[13px] font-medium text-black hover:brightness-110 disabled:opacity-60">
+          <button disabled={busy} onClick={async () => { await wallet.grant(permission.id, setStep); setStep(null); }} className="flex items-center gap-2 rounded-lg bg-accent px-3 py-1.5 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-60">
             {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />} {busy ? step ?? "Working" : "Grant"}
           </button>
           <button disabled={busy} onClick={() => wallet.remove(permission.id)} className="rounded-lg px-3 py-1.5 text-[13px] text-dim hover:text-ink disabled:opacity-60">
