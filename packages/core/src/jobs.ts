@@ -15,7 +15,7 @@ import { CHAINS, type ChainKey } from "./registry/chains";
 import { isSponsored, simulateSponsored } from "./sponsor";
 import { buildAaveV4Unwind } from "./unwind";
 import { routeTransactions } from "./adapters/lifi";
-import { spotMarket } from "./executors/hyperliquid";
+import { spotMarket, spotSize } from "./executors/hyperliquid";
 import { getOrCreateWallet } from "./wallet";
 
 /** When a job fires. Code evaluates each one from a live source. */
@@ -162,15 +162,26 @@ export async function checkJob(userId: string, args: { condition: JobCondition; 
     const a = args.action;
     if (a.op === "spot") {
       const m = await spotMarket(a.pair);
-      const size = Math.floor((a.usd / m.markPx) * 10 ** m.szDecimals) / 10 ** m.szDecimals;
+      const size = spotSize(a.usd, m.markPx, m.szDecimals);
       if (size * m.markPx < 10) throw new Error(`On Hyperliquid ${m.pair} the smallest lot is ${10 ** -m.szDecimals} (about ${(m.markPx * 10 ** -m.szDecimals).toFixed(2)} USD), and an order needs 10 USD. ${a.usd} USD is too small. Use a swap on an EVM chain for a small amount.`);
     } else await hl.getMarket(a.coin);
     return { valueNow: now.value, chain: "hyperliquid" as ChainKey, transactions: [], simulation: null };
   }
   if (args.action.type === "agent_task") return { valueNow: now.value, chain: "ethereum" as ChainKey, transactions: [], simulation: null };
   const built = await buildJobTransactions(userId, args.action);
-  const simulation = args.allowRevertNow ? null : await simulateOrThrow(userId, built.chain, built.from, built.transactions);
-  return { valueNow: now.value, chain: built.chain, transactions: built.transactions, simulation };
+  let simulation = null;
+  let warning: string | null = null;
+  if (!args.allowRevertNow) {
+    try {
+      simulation = await simulateOrThrow(userId, built.chain, built.from, built.transactions);
+    } catch (err) {
+      // Missing funds today do not stop a job: the funds can arrive before it runs, and each run is simulated again first.
+      const text = err instanceof Error ? err.message : String(err);
+      if (!/insufficient|TRANSFER_FROM_FAILED|exceeds balance|transfer amount|balance too low|STF|holds .* and the action needs/i.test(text)) throw err;
+      warning = `The wallet does not hold the funds for this action now (${text.split("\n")[0]!.slice(0, 160)}). Each run checks again; a run with no funds fails and the next one tries again.`;
+    }
+  }
+  return { valueNow: now.value, chain: built.chain, transactions: built.transactions, simulation, warning };
 }
 
 export async function createJob(userId: string, args: { name: string; condition: JobCondition; action: JobAction; days: number; repeat?: JobRepeat }): Promise<Job> {
@@ -242,7 +253,14 @@ async function runJob(r: Row) {
     console.log(`job ${r.id} (${r.name}) run ${runs} done for ${r.user_id}`);
   } catch (err) {
     const error = (err instanceof Error ? err.message : String(err)).split("\n")[0]!.slice(0, 400);
-    await sql()`update jobs set status = 'failed', result = ${sql().json({ firedAt: new Date().toISOString(), error } as never)} where id = ${r.id}`;
+    const runs = (r.runs_done ?? 0) + 1;
+    // A repeated job keeps its schedule after a failed run (for example a day with no funds). A single job ends as failed.
+    if (r.repeat_seconds && runs < (r.repeat_times ?? 1)) {
+      const condition = r.condition.type === "time" ? { ...r.condition, at: new Date(Date.now() + r.repeat_seconds * 1000).toISOString() } : r.condition;
+      await sql()`update jobs set status = 'active', runs_done = ${runs}, not_before = ${new Date(Date.now() + r.repeat_seconds * 1000)}, condition = ${sql().json(condition as never)}, result = ${sql().json({ firedAt: new Date().toISOString(), error } as never)} where id = ${r.id}`;
+    } else {
+      await sql()`update jobs set status = 'failed', result = ${sql().json({ firedAt: new Date().toISOString(), error } as never)} where id = ${r.id}`;
+    }
     console.error(`job ${r.id} (${r.name}) failed for ${r.user_id}: ${error}`);
   }
 }

@@ -21,7 +21,7 @@ import * as flash from "../flashExecutor";
 import { buildAaveV4Unwind } from "../unwind";
 import { ensureUpgraded, isSponsored, simulateSponsored } from "../sponsor";
 import { getPositions } from "../positions";
-import { HL_BLOCKED_ACTIONS, openOrders, spotMarket } from "../executors/hyperliquid";
+import { HL_BLOCKED_ACTIONS, openOrders, spotMarket, spotSize } from "../executors/hyperliquid";
 import * as lifi from "../adapters/lifi";
 import { SPONSORED_CHAINS, sponsorEnabled } from "../sponsor";
 import { CHAIN_KEYS, CHAINS, USDC } from "../registry/chains";
@@ -411,7 +411,7 @@ export function buildTools(ctx: ToolContext) {
         const check = await jobs.checkJob(ctx.userId, { condition, action, allowRevertNow: a.allowRevertNow, repeat });
         return act("job_create", { name: a.name, condition, action, days: a.days, repeat }, {
           venue: "Scheduled job", chain: CHAINS[check.chain].name, summary: `${a.name}. Fires when: ${jobs.describeCondition(condition)}. ${a.whatItDoes}`,
-          valueNow: check.valueNow, simulation: check.simulation ?? { note: `Not simulated now. Fork test: ${a.forkTestSummary}` },
+          valueNow: check.valueNow, simulation: check.simulation ?? { note: check.warning ?? `Not simulated now. Fork test: ${a.forkTestSummary}` }, ...(check.warning ? { fundsWarning: check.warning } : {}),
           sources: ["Condition and action are checked by code on the server. No model decides when it fires."],
           transactions: check.transactions.map((t) => ({ ...t, chainId: CHAINS[check.chain].chainId })),
           endsInDays: a.days, disclosure: "A job reduces risk. It cannot guarantee a result. A price gap, a slow chain or a failed simulation can stop it.",
@@ -476,7 +476,7 @@ export function buildTools(ctx: ToolContext) {
       { pair: z.string(), side: z.enum(["buy", "sell"]), usd: z.number().positive(), slippageBps: z.number().int().min(1).max(500).optional() },
       run(async (a) => {
         const m = await spotMarket(a.pair);
-        const size = Math.floor((a.usd / m.markPx) * 10 ** m.szDecimals) / 10 ** m.szDecimals;
+        const size = spotSize(a.usd, m.markPx, m.szDecimals);
         if (size * m.markPx < 10) throw new Error(`On ${m.pair} the smallest lot is ${10 ** -m.szDecimals} (about ${(m.markPx * 10 ** -m.szDecimals).toFixed(2)} USD) and an order needs 10 USD. Use swap on an EVM chain for a smaller amount.`);
         return act("hl_spot_order", { ...a, pair: m.pair }, { venue: "Hyperliquid spot", market: m.pair, side: a.side, size, markPx: m.markPx, usd: size * m.markPx }, size * m.markPx);
       })),

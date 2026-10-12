@@ -165,10 +165,18 @@ export async function spotMarket(pair: string) {
   return { pair: names(u), asset: 10_000 + u.index, coin: u.name, szDecimals: base.szDecimals, markPx: Number(ctxs[u.index]!.markPx) };
 }
 
-/** Buy or sell on a Hyperliquid spot pair with one IOC order. Minimum 10 USD of value; the size rounds down to the lot. */
+/** The order size for a USD amount: the nearest lot, plus one lot when that is below the 10 USD minimum of Hyperliquid. */
+export function spotSize(usd: number, markPx: number, szDecimals: number) {
+  const lot = 10 ** -szDecimals;
+  let lots = Math.round(usd / markPx / lot);
+  if (lots * lot * markPx < 10.05 && usd >= 10) lots = Math.ceil(10.05 / markPx / lot);
+  return Number((lots * lot).toFixed(szDecimals));
+}
+
+/** Buy or sell on a Hyperliquid spot pair with one IOC order. Minimum 10 USD of value; the size is the nearest lot. */
 export async function executeSpotOrder(userId: string, args: { pair: string; side: "buy" | "sell"; usd: number; slippageBps?: number }) {
   const m = await spotMarket(args.pair);
-  const size = Math.floor((args.usd / m.markPx) * 10 ** m.szDecimals) / 10 ** m.szDecimals;
+  const size = spotSize(args.usd, m.markPx, m.szDecimals);
   if (size * m.markPx < 10) throw new Error(`The order is ${(size * m.markPx).toFixed(2)} USD after rounding to the lot of ${10 ** -m.szDecimals}. Hyperliquid needs at least 10 USD.`);
   const slip = (args.slippageBps ?? 100) / 10_000;
   const px = m.markPx * (args.side === "buy" ? 1 + slip : 1 - slip);
