@@ -21,6 +21,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <span />
           <span />
           <span />
+          <span />
+          <span />
+          <span />
         </div>
         <div className="relative z-10 h-full">
           <Providers>{children}</Providers>

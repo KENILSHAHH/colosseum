@@ -47,25 +47,43 @@ body {
 }
 .aurora span:nth-child(1) {
   left: -20vw;
-  background: linear-gradient(180deg, transparent 5%, #12d6a8 35%, #2747ff 65%, transparent 95%);
+  background: linear-gradient(180deg, transparent 5%, #2fbf6a 35%, #2f6bd9 65%, transparent 95%);
   animation: aurora-sweep-right 17s ease-in-out infinite alternate, aurora-pulse 7s ease-in-out infinite alternate;
 }
 .aurora span:nth-child(2) {
   left: 70vw;
-  background: linear-gradient(180deg, transparent 10%, #7b3cff 40%, #1f9dff 70%, transparent 95%);
+  background: linear-gradient(180deg, transparent 10%, #8a4cd9 40%, #4b4fd9 70%, transparent 95%);
   animation: aurora-sweep-left 21s ease-in-out infinite alternate, aurora-pulse 9s ease-in-out -3s infinite alternate;
 }
 .aurora span:nth-child(3) {
   left: 20vw;
   width: 30vw;
-  background: linear-gradient(180deg, transparent 15%, #2b5bff 45%, #19c3d6 70%, transparent 92%);
+  background: linear-gradient(180deg, transparent 15%, #2f6bd9 45%, #2fb5c4 70%, transparent 92%);
   animation: aurora-sway 13s ease-in-out infinite alternate, aurora-pulse 6s ease-in-out -2s infinite alternate;
 }
 .aurora span:nth-child(4) {
   left: 45vw;
   width: 26vw;
-  background: linear-gradient(180deg, transparent 10%, #b03cff 40%, #2747ff 72%, transparent 95%);
+  background: linear-gradient(180deg, transparent 10%, #c8c23c 40%, #e0882f 72%, transparent 95%);
   animation: aurora-sway 19s ease-in-out -6s infinite alternate-reverse, aurora-pulse 8s ease-in-out -5s infinite alternate;
+}
+.aurora span:nth-child(5) {
+  left: 8vw;
+  width: 30vw;
+  background: linear-gradient(180deg, transparent 12%, #e0882f 40%, #d9423f 70%, transparent 94%);
+  animation: aurora-sweep-right 24s ease-in-out -8s infinite alternate, aurora-pulse 10s ease-in-out -1s infinite alternate;
+}
+.aurora span:nth-child(6) {
+  left: 60vw;
+  width: 28vw;
+  background: linear-gradient(180deg, transparent 10%, #d9423f 38%, #8a4cd9 72%, transparent 95%);
+  animation: aurora-sway 23s ease-in-out -11s infinite alternate, aurora-pulse 11s ease-in-out -4s infinite alternate;
+}
+.aurora span:nth-child(7) {
+  left: 30vw;
+  width: 26vw;
+  background: linear-gradient(180deg, transparent 10%, #4b4fd9 40%, #2fbf6a 72%, transparent 95%);
+  animation: aurora-sweep-left 26s ease-in-out -14s infinite alternate, aurora-pulse 12s ease-in-out -6s infinite alternate;
 }
 /* A dark edge keeps the text easy to read. */
 .aurora::after {
@@ -90,13 +108,13 @@ body {
   100% { transform: translate3d(26vw, 6vh, 0) skewX(-10deg) scaleX(0.85); }
 }
 @keyframes aurora-pulse {
-  0% { opacity: 0.08; }
-  100% { opacity: 0.24; }
+  0% { opacity: 0.05; }
+  100% { opacity: 0.15; }
 }
 @media (prefers-reduced-motion: reduce) {
   .aurora span {
     animation: none;
-    opacity: 0.2;
+    opacity: 0.12;
   }
 }
 
