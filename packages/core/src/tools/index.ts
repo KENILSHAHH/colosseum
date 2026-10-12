@@ -113,14 +113,14 @@ export function buildTools(ctx: ToolContext) {
       { chain: z.enum(["ethereum", "arbitrum", "base"]), address: z.string().optional() },
       run(({ chain, address: a }) => aave.getAccount(chain, (a ?? address) as `0x${string}`)), read),
 
-    tool("aave_v4_markets", "List live Aave v4 reserves on Ethereum mainnet. Aave v4 has hubs (shared liquidity) and spokes (markets with their own risk rules). One token can be in several spokes, with a different rate in each. Returns the reserve id for aave_v4_action, the spoke, the hub, supply and borrow APY in percent, the collateral factor and the size.",
-      { asset: z.string().optional().describe("Token symbol, for example USDC or WETH"), spoke: z.string().optional().describe("Spoke name, for example Main, Bluechip, Lido") },
+    tool("aave_v4_markets", "List live Aave v4 reserves on every chain where Aave v4 is deployed (the result names the chains; Aave v4 is not on Arbitrum, Robinhood Chain, HyperEVM or Tempo unless the chain list says so). Aave v4 has hubs (shared liquidity) and spokes (markets with their own risk rules). One token can be in several spokes, with a different rate in each. Returns the reserve id for aave_v4_action, the spoke, the hub, supply and borrow APY in percent, the collateral factor and the size.",
+      { asset: z.string().optional().describe("Token symbol, for example USDC or WETH"), spoke: z.string().optional().describe("Spoke name, for example Main, Bluechip, Lido"), chain: z.string().optional().describe("Chain name, for example ethereum or base. Default: all Aave v4 chains.") },
       run(async (a) => {
-        const reserves = await aaveV4.listReserves(a);
-        return { count: reserves.length, reserves: reserves.slice(0, 40), source: "https://api.aave.com/graphql" };
+        const [chains, reserves] = await Promise.all([aaveV4.v4Chains(), aaveV4.listReserves(a)]);
+        return { aaveV4Chains: chains.map((c) => ({ name: c.name, chainId: c.chainId, agentCanAct: c.key !== null })), count: reserves.length, reserves: reserves.slice(0, 40), source: "https://api.aave.com/graphql" };
       }), read),
 
-    tool("aave_v4_account", "Read the Aave v4 positions of an address on Ethereum: one position for each spoke, with supplied value, collateral, debt, health factor and net APY. The health factor is separate for each spoke. Default: the agent wallet. Pass the linked wallet address to read the user's own positions.",
+    tool("aave_v4_account", "Read the Aave v4 positions of an address on every Aave v4 chain: one position for each spoke, with supplied value, collateral, debt, health factor and net APY. The health factor is separate for each spoke. Default: the agent wallet. Pass the linked wallet address to read the user's own positions.",
       { address: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional() },
       run(async ({ address: a }) => ({ user: a ?? address, positions: await aaveV4.getPositions(a ?? address), source: "https://api.aave.com/graphql" })), read),
 
@@ -182,7 +182,7 @@ export function buildTools(ctx: ToolContext) {
         }, a.usdValue);
       })),
 
-    tool("aave_v4_action", "Supply, borrow, withdraw or repay on Aave v4 (Ethereum mainnet). The official Aave API builds the transactions, with the token approval when one is needed. wallet=agent sends them from the agent wallet after a simulation. wallet=linked only returns the transactions for the user's own wallet: request a permission for their contracts and functions, then send them with linked_wallet_send_transactions. Get the reserve id from aave_v4_markets.",
+    tool("aave_v4_action", "Supply, borrow, withdraw or repay on Aave v4. The reserve id sets the chain. The agent can act on an Aave v4 chain that this product supports (see agentCanAct in aave_v4_markets). The official Aave API builds the transactions, with the token approval when one is needed. wallet=agent sends them from the agent wallet after a simulation. wallet=linked only returns the transactions for the user's own wallet: request a permission for their contracts and functions, then send them with linked_wallet_send_transactions. Get the reserve id from aave_v4_markets.",
       {
         action: z.enum(["supply", "borrow", "withdraw", "repay"]),
         reserveId: z.string().min(8).describe("Reserve id from aave_v4_markets"),
@@ -195,15 +195,18 @@ export function buildTools(ctx: ToolContext) {
       run(async (a) => {
         const linked = a.wallet === "linked" ? await delegation.getLinkedWallet(ctx.userId) : null;
         if (a.wallet === "linked" && !linked) throw new Error("The user has no linked wallet.");
-        const txs = await aaveV4.buildAction({ action: a.action, reserveId: a.reserveId, amount: a.amount, max: a.max, native: a.native, sender: linked ?? address });
-        if (linked) return { status: "TRANSACTIONS_BUILT", wallet: linked, chain: "ethereum", transactions: txs, note: "Nothing was sent. Each transaction needs an active permission for its contract (`to`) and its function (the first 4 bytes of `data`). Then call linked_wallet_send_transactions with these transactions." };
-        const simulation = await evm.simulate("ethereum", address, txs);
+        const built = await aaveV4.buildAction({ action: a.action, reserveId: a.reserveId, amount: a.amount, max: a.max, native: a.native, sender: linked ?? address });
+        const txs = built.transactions;
+        const chain = built.chain.key;
+        if (!chain) throw new Error(`This product cannot send transactions on ${built.chain.name} yet. The agent can read Aave v4 there, but cannot act.`);
+        if (linked) return { status: "TRANSACTIONS_BUILT", wallet: linked, chain, transactions: txs, note: "Nothing was sent. Each transaction needs an active permission for its contract (`to`) and its function (the first 4 bytes of `data`). Then call linked_wallet_send_transactions with these transactions." };
+        const simulation = await evm.simulate(chain as (typeof EVM_CHAINS)[number], address, txs);
         const bad = simulation.results.find((r, i) => r.status === "revert" && (i === 0 || simulation.method === "eth_simulateV1"));
         if (bad) throw new Error(`Simulation: transaction ${bad.index + 1} reverts (${bad.error}). Nothing was sent. Check the balance, the gas and the limits of the reserve.`);
-        const summary = `Aave v4: ${a.action} ${a.max ? "all" : a.amount}`;
-        return act("evm_transactions", { chain: "ethereum", transactions: txs }, {
-          venue: "Aave v4", chain: CHAINS.ethereum.name, summary, sources: ["https://api.aave.com/graphql"], simulation,
-          transactions: txs.map((t) => ({ ...t, chainId: aaveV4.AAVE_V4_CHAIN_ID })),
+        const summary = `Aave v4 on ${built.chain.name}: ${a.action} ${a.max ? "all" : a.amount}`;
+        return act("evm_transactions", { chain, transactions: txs }, {
+          venue: "Aave v4", chain: built.chain.name, summary, sources: ["https://api.aave.com/graphql"], simulation,
+          transactions: txs.map((t) => ({ ...t, chainId: built.chainId })),
         }, a.usdValue);
       })),
 

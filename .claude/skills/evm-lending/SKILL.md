@@ -24,14 +24,17 @@ Health factor = `collateral × liquidationThreshold / debt`. Liquidation starts 
 
 Worked case: supply 2 ETH at 4,000 USD, borrow at 60% LTV → debt 4,800 USDC. With a liquidation threshold of 0.83, HF = 8,000 × 0.83 / 4,800 = 1.38. The guard default trigger is 1.15.
 
-## Aave v4 (Ethereum mainnet)
+## Aave v4
 
-Verified against the official API on 2026-10-12. Live since 2026-03-30.
+Verified against the official API on 2026-10-12. Live on Ethereum since 2026-03-30.
 
+- Chains with Aave v4 on 2026-10-12: Ethereum (13 spokes, 75 reserves), Base (Coinbase Stocks spoke: tokenized stocks and USDC), Avalanche, Arc. `aave_v4_markets` returns the live chain list. Do not trust this line when the tool says different.
+- Aave v4 is NOT on Arbitrum, Robinhood Chain, HyperEVM or Tempo. On those chains use Aave v3 (Arbitrum) or Morpho (Robinhood Chain, HyperEVM, Tempo). Say this plainly when a user asks for Aave v4 there.
+- The agent can act on Ethereum and Base. It can read Avalanche and Arc, but it cannot send transactions there.
 - Design: hubs hold the liquidity (Core, Plus, Prime). Spokes are the markets users act on (Main, Bluechip, Forex, Gold, Lido, Etherfi, Kelp, Lombard, Ethena, PAXG Gold, Pendle and more). A spoke draws liquidity from a hub inside a credit line.
 - One token can be in several spokes. The rate, the collateral factor and the caps are different in each. Always name the spoke.
 - A position belongs to one spoke. The health factor is separate for each spoke. Collateral in one spoke does not protect debt in another.
-- Source of truth: the AaveKit GraphQL API at `https://api.aave.com/graphql`. It gives reserves, positions and ready transactions. `PercentNumber.normalized` is the percent value (3.99 = 3.99%). The address book package has no v4 entries.
+- Source of truth: the AaveKit GraphQL API at `https://api.aave.com/graphql`. It gives chains, reserves, positions and ready transactions. `PercentNumber.normalized` is the percent value (3.99 = 3.99%). The address book package has no v4 entries.
 - Tools: `aave_v4_markets` (reserve ids, rates), `aave_v4_account` (positions for each spoke), `aave_v4_action` (supply, borrow, withdraw, repay).
 - A reserve id from the API is a string. The on-chain id is a small number inside one spoke. Do not mix them.
 - Native ETH goes through a gateway contract that the API selects. An ERC-20 needs an approval to the spoke first. The API adds it.

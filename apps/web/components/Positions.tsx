@@ -100,10 +100,11 @@ export function PositionsView() {
 
       {v4.length > 0 && (
         <Block title="Aave v4" empty={null}>
-          <Table head={["Spoke", "Supplied", "Debt", "LTV now", "Health factor", "Net APY"]}>
+          <Table head={["Chain", "Spoke", "Supplied", "Debt", "LTV now", "Health factor", "Net APY"]}>
             {v4.map((a) => (
-              <tr key={a.spoke}>
-                <td className="font-medium">{a.spoke}</td>
+              <tr key={`${a.chain}-${a.spoke}`}>
+                <td className="font-medium">{a.chain}</td>
+                <td>{a.spoke}</td>
                 <td>{usd(a.suppliedUsd)}</td>
                 <td>{usd(a.debtUsd)}</td>
                 <td>{a.collateralUsd > 0 ? `${((a.debtUsd / a.collateralUsd) * 100).toFixed(1)}%` : "—"}</td>

@@ -116,7 +116,7 @@ export interface Positions {
     positions: { coin: string; dex: string; size: number; entryPx: number; markPx: number; liquidationPx: number | null; distanceToLiquidation: number | null; leverage: number; marginUsed: number; unrealizedPnl: number; positionValue: number }[];
   };
   aave: { chain: string; chainKey: string; collateralUsd: number; debtUsd: number; healthFactor: number | null; ltv: number; liquidationThreshold: number }[];
-  aaveV4: { spoke: string; suppliedUsd: number; collateralUsd: number; debtUsd: number; healthFactor: number | null; netApyPct: number }[];
+  aaveV4: { chain: string; spoke: string; suppliedUsd: number; collateralUsd: number; debtUsd: number; healthFactor: number | null; netApyPct: number }[];
   guards: { id: string; venue: string; params: Record<string, any>; status: string; lastValue: number | null; lastCheck: string | null }[];
   errors: string[];
 }
