@@ -93,6 +93,17 @@ export function buildTools(ctx: ToolContext) {
 
   const read = { annotations: { readOnlyHint: true } };
 
+  /** The address of the user on a chain: the Solana wallet on Solana, the Hyperliquid account on Hyperliquid, else the wallet. */
+  const recipientFor = async (chain: string) => {
+    if (chain === "solana") {
+      const sw = await getSolanaWallet(ctx.userId);
+      if (!sw) throw new Error("The user has no Solana wallet yet.");
+      return sw.address;
+    }
+    return chain === "hyperliquid" ? hlAddress : address;
+  };
+  const senderFor = recipientFor;
+
   const tools = [
     // ── Read ────────────────────────────────────────────────────────────────
     tool("wallet_overview", "The user's agent wallet: address, native and USDC balances on Ethereum, Arbitrum and Base, Hyperliquid balances and positions, Aave accounts, active guards. Call it before any action to know what funds exist and where.",
@@ -122,7 +133,7 @@ export function buildTools(ctx: ToolContext) {
 
     tool("bridge_quote", "Quote a cross-chain transfer through Relay without sending it. Returns output amount, fee in USD, ETA in seconds and the steps.",
       { fromChain: z.enum(CHAIN_KEYS), toChain: z.enum(CHAIN_KEYS), fromToken: z.string(), toToken: z.string(), amount: z.number().positive() },
-      run((a) => relay.quoteBridge({ ...a, user: address, recipient: address })), read),
+      run(async (a) => relay.quoteBridge({ ...a, user: await senderFor(a.fromChain), recipient: await recipientFor(a.toChain) })), read),
 
     tool("bridge_status", "Status of a Relay transfer by request id. Use it after `bridge` to confirm that the funds arrived before the next step.",
       { requestId: z.string() }, run(({ requestId }) => relay.bridgeStatus(requestId)), read),
@@ -336,11 +347,10 @@ export function buildTools(ctx: ToolContext) {
         }, a.amountUsdc);
       })),
 
-    tool("bridge", "Move tokens between chains through Relay, from the agent wallet to the agent wallet (same address) on the destination. Supports Ethereum, Arbitrum, Base, Hyperliquid (HyperCore), HyperEVM, Tempo and Robinhood Chain. Do not use it with Hyperliquid as the destination for a new account: Relay then takes a fixed fee of about 1.2 USDC. Bridge to Arbitrum and call hl_deposit.",
+    tool("bridge", "Move tokens between chains through Relay, from the wallet to the user's own address on the destination: the same wallet on EVM chains, the Solana wallet on Solana, the Hyperliquid account on Hyperliquid. Supports Ethereum, Arbitrum, Base, Polygon, Hyperliquid (HyperCore), HyperEVM, Tempo, Robinhood Chain and Solana. Do not use it with Hyperliquid as the destination for a new account: Relay then takes a fixed fee of about 1.2 USDC. Bridge to Arbitrum and call hl_deposit.",
       { fromChain: z.enum(EVM_CHAINS), toChain: z.enum(CHAIN_KEYS), fromToken: z.string(), toToken: z.string(), amount: z.number().positive() },
       run(async (a) => {
-        if (a.toChain === "solana") throw new Error("The agent wallet has no Solana address yet. Bridging to Solana is not supported.");
-        const q = await relay.quoteBridge({ ...a, user: address, recipient: address });
+        const q = await relay.quoteBridge({ ...a, user: address, recipient: await recipientFor(a.toChain) });
         const transactions = q.steps.flatMap((s) => s.transactions.map((t) => {
           const tx = t as { to: string; data: string; value?: string; chainId?: number };
           return { chainId: tx.chainId, to: tx.to, data: tx.data, value: tx.value ?? "0", description: s.description };

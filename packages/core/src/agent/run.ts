@@ -138,7 +138,25 @@ const userMessage = (text: string, priority?: SDKUserMessage["priority"]): SDKUs
 
 const FILE_TOOLS = "Read|Write|Edit|Glob|Grep|NotebookEdit";
 
+/** The run of each user that is active now. A second run waits for it: both would write the same configuration folder. */
+const userLocks = new Map<string, Promise<void>>();
+
 export async function* runChatAgent(args: RunArgs): AsyncGenerator<AgentEvent> {
+  const before = userLocks.get(args.userId) ?? Promise.resolve();
+  let release!: () => void;
+  const mine = new Promise<void>((r) => (release = r));
+  const chain = before.then(() => mine);
+  userLocks.set(args.userId, chain);
+  try {
+    await before;
+    yield* runOne(args);
+  } finally {
+    release();
+    if (userLocks.get(args.userId) === chain) userLocks.delete(args.userId);
+  }
+}
+
+async function* runOne(args: RunArgs): AsyncGenerator<AgentEvent> {
   const c = config();
   const { cwd, configDir } = workspaceFor(args.userId);
   const base = path.dirname(cwd);
