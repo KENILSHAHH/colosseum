@@ -1,9 +1,9 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, LogOut, Plus, ShieldCheck } from "lucide-react";
+import { Check, Loader2, LogOut, Plus, ShieldCheck } from "lucide-react";
 import { useState } from "react";
-import { api, short, type Me, type Permission } from "@/lib/api";
+import { api, short, usd, type Me, type Permission } from "@/lib/api";
 import { useLinkedWallet } from "@/lib/linkedWallet";
 import type { useSession } from "@/lib/session";
 
@@ -65,6 +65,7 @@ export function Sidebar({ session, onNewChat }: { session: ReturnType<typeof use
                 </button>
               </div>
             </Section>
+            <Balances />
             <LinkedWallet me={me} />
             <Guards />
           </>
@@ -81,6 +82,34 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h3 className="mb-1.5 px-1 text-[11px] font-medium uppercase tracking-wider text-faint">{title}</h3>
       <div className="rounded-lg border border-line bg-bg/40 p-3">{children}</div>
     </section>
+  );
+}
+
+interface Balance { address: string; usd: number | null }
+
+/** Two balances in USD: the agent wallet and the user's own wallet. A click copies the address. */
+function Balances() {
+  const { data } = useQuery({ queryKey: ["balances"], queryFn: () => api<{ agent: Balance; wallet: Balance }>("/billing/balances"), refetchInterval: 30_000 });
+  const [copied, setCopied] = useState<string | null>(null);
+  const copy = async (address: string) => {
+    await navigator.clipboard.writeText(address);
+    setCopied(address);
+    setTimeout(() => setCopied(null), 1500);
+  };
+  const row = (label: string, b: Balance | undefined) => (
+    <button disabled={!b} onClick={() => b && copy(b.address)} title={b ? `Copy ${b.address}` : undefined} className="flex w-full items-center justify-between rounded-md px-1 py-1 text-[13px] hover:bg-raised">
+      <span className="flex items-center gap-1.5 text-dim">
+        {label}
+        {b && copied === b.address ? <Check className="size-3 text-good" /> : b && <span className="font-mono text-[11px] text-faint">{short(b.address)}</span>}
+      </span>
+      <span className="font-mono tabular-nums">{!b ? "…" : b.usd === null ? "not read" : usd(b.usd)}</span>
+    </button>
+  );
+  return (
+    <Section title="Balances">
+      {row("Agent", data?.agent)}
+      {row("Wallet", data?.wallet)}
+    </Section>
   );
 }
 

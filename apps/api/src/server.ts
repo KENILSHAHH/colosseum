@@ -238,6 +238,19 @@ app.get("/billing", async (c) => {
   return c.json({ totalChargedUsd: Number(totals?.charged ?? 0), claudeCostUsd: Number(llm?.cost ?? 0), tokens: Number(llm?.tokens ?? 0), charges, payment });
 });
 
+// Two balances in USD: the agent wallet and the user's own (Privy) wallet. Tokens on every chain LI.FI reads, plus OUSD on Tempo.
+app.get("/billing/balances", async (c) => {
+  const userId = c.get("userId");
+  const [agent, deposit] = await Promise.all([getOrCreateWallet(userId), getDepositWallet(userId)]);
+  const total = async (address: string) => {
+    const [assets, ousd] = await Promise.all([lifi.walletAssets(address, 0).catch(() => null), ousdBalance(address)]);
+    return { address, usd: assets === null && ousd === null ? null : (assets ?? []).reduce((s, a) => s + (a.usd ?? 0), 0) + (ousd ?? 0) };
+  };
+  const walletAddress = deposit.address ?? userId;
+  const [a, w] = await Promise.all([total(agent.address), total(walletAddress)]);
+  return c.json({ agent: a, wallet: w });
+});
+
 // Every token of the agent wallet that can move to OUSD on Tempo. Routes come from LI.FI, the API of jumper.xyz.
 app.get("/billing/assets", async (c) => c.json(await lifi.walletAssets((await getOrCreateWallet(c.get("userId"))).address)));
 
