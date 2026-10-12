@@ -124,10 +124,21 @@ export default function Page() {
   const send = useCallback(
     async (text: string) => {
       const prompt = text.trim();
-      if (!prompt || busy || !session.signedIn) return;
+      if (!prompt || !session.signedIn) return;
       recognition.current?.abort();
       setListening(false);
       setInput("");
+      if (busy) {
+        // The agent is running. The message goes into the same run. The next events show in a new answer below it.
+        try {
+          await post("/chat/message", { prompt });
+          setMessages((m) => [...m, { role: "user", parts: [{ kind: "text", text: prompt }] }, { role: "assistant", parts: [] }]);
+        } catch (e) {
+          setInput(prompt);
+          patchLast((m) => ({ ...m, error: e instanceof Error ? e.message : "The message was not sent" }));
+        }
+        return;
+      }
       setBusy(true);
       setMessages((m) => [...m, { role: "user", parts: [{ kind: "text", text: prompt }] }, { role: "assistant", parts: [] }]);
       abort.current = new AbortController();
@@ -144,6 +155,7 @@ export default function Page() {
           else if (ev.type === "tool") patchLast((m) => ({ ...m, parts: [...m.parts, { kind: "tool", id: ev.id, name: ev.name, input: ev.input }] }));
           else if (ev.type === "tool_result")
             patchLast((m) => ({ ...m, parts: m.parts.map((p) => (p.kind === "tool" && p.id === ev.id ? { ...p, result: ev.preview, isError: ev.isError } : p)) }));
+          else if (ev.type === "wallet_request") patchLast((m) => ({ ...m, parts: [...m.parts, { kind: "wallet_request", request: ev.request }] }));
           else if (ev.type === "permission") patchLast((m) => ({ ...m, parts: [...m.parts, { kind: "permission", permission: ev.permission }] }));
           else if (ev.type === "intent")
             patchLast((m) =>
@@ -155,7 +167,6 @@ export default function Page() {
             patchLast((m) => ({ ...m, cost: { chargedUsd: ev.chargedUsd, costUsd: ev.costUsd } }));
             qc.invalidateQueries({ queryKey: ["billing"] });
             qc.invalidateQueries({ queryKey: ["me"] });
-          else if (ev.type === "wallet_request") patchLast((m) => ({ ...m, parts: [...m.parts, { kind: "wallet_request", request: ev.request }] }));
           } else if (ev.type === "error") patchLast((m) => ({ ...m, error: ev.message }));
         }
       } catch (e) {
@@ -261,12 +272,13 @@ export default function Page() {
           <Mic className="size-4" />
         </button>
       )}
-      {busy ? (
+      {busy && (
         <button type="button" onClick={() => abort.current?.abort()} className="grid size-9 place-items-center rounded-xl bg-raised text-ink" title="Stop">
           <Square className="size-3.5 fill-current" />
         </button>
-      ) : (
-        <button type="submit" disabled={!input.trim() || !session.signedIn} className="grid size-9 place-items-center rounded-xl bg-accent text-black disabled:opacity-30" title="Send">
+      )}
+      {(!busy || input.trim()) && (
+        <button type="submit" disabled={!input.trim() || !session.signedIn} className="grid size-9 place-items-center rounded-xl bg-accent text-black disabled:opacity-30" title={busy ? "Send to the running agent" : "Send"}>
           <ArrowUp className="size-4" />
         </button>
       )}
@@ -341,6 +353,7 @@ function MessageView({ message, streaming }: { message: Message; streaming: bool
               </ReactMarkdown>
             </div>
           );
+        if (p.kind === "wallet_request") return <WalletRequestCard key={p.request.id} request={p.request} />;
         if (p.kind === "permission") return <PermissionCard key={p.permission.id} permission={p.permission} />;
         return <IntentCard key={p.intent.id} intent={p.intent} />;
       })}
@@ -353,7 +366,6 @@ function MessageView({ message, streaming }: { message: Message; streaming: bool
       )}
       {message.error && <div className="mt-3 rounded-lg border border-bad/40 bg-bad/10 px-3 py-2 text-[13.5px] text-bad">{message.error}</div>}
       {message.cost && (
-        if (p.kind === "wallet_request") return <WalletRequestCard key={p.request.id} request={p.request} />;
         <div className="mt-3 text-[11.5px] text-faint">
           Charged {usd(message.cost.chargedUsd)} · model cost {usd(message.cost.costUsd)}
         </div>

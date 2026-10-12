@@ -3,7 +3,7 @@
 import { cpSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
+import { query, type Options, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { recordUsage } from "../billing/pricing";
 import { config } from "../config";
 import type { Intent } from "../intents";
@@ -88,6 +88,31 @@ export interface RunArgs {
   signal?: AbortSignal;
 }
 
+/** The open input of one running agent. A message sent during the run goes into it and the agent reads it before its next step. */
+interface RunInbox {
+  queue: string[];
+  closed: boolean;
+  wake: (() => void) | null;
+}
+
+const inboxes = new Map<string, RunInbox>();
+
+/** Give a message to the run of the user that is active now. Returns false when no run accepts it. */
+export function sendToRun(userId: string, text: string): boolean {
+  const inbox = inboxes.get(userId);
+  if (!inbox || inbox.closed) return false;
+  inbox.queue.push(text);
+  inbox.wake?.();
+  return true;
+}
+
+const userMessage = (text: string, priority?: SDKUserMessage["priority"]): SDKUserMessage => ({
+  type: "user",
+  message: { role: "user", content: text },
+  parent_tool_use_id: null,
+  ...(priority ? { priority } : {}),
+});
+
 const FILE_TOOLS = "Read|Write|Edit|Glob|Grep|NotebookEdit";
 
 export async function* runChatAgent(args: RunArgs): AsyncGenerator<AgentEvent> {
@@ -157,14 +182,29 @@ export async function* runChatAgent(args: RunArgs): AsyncGenerator<AgentEvent> {
     },
   };
 
+  // Streaming input: the first prompt starts the run. The input stays open, so a later message reaches the same run without an interrupt.
+  // It closes when a turn ends and no message waits.
+  const inbox: RunInbox = { queue: [], closed: false, wake: null };
+  inboxes.set(args.userId, inbox);
+  async function* input(): AsyncGenerator<SDKUserMessage> {
+    yield userMessage(args.prompt);
+    for (;;) {
+      while (inbox.queue.length) yield userMessage(inbox.queue.shift()!, "next");
+      if (inbox.closed) return;
+      await new Promise<void>((resolve) => (inbox.wake = resolve));
+      inbox.wake = null;
+    }
+  }
+
   let sessionId: string | null = null;
   const flushIntents = function* (): Generator<AgentEvent> {
     while (pending.length) yield { type: "intent", intent: pending.shift()! };
     while (permissions.length) yield { type: "permission", permission: permissions.shift()! };
+    while (walletRequests.length) yield { type: "wallet_request", request: walletRequests.shift()! };
   };
 
   try {
-    for await (const msg of query({ prompt: args.prompt, options })) {
+    for await (const msg of query({ prompt: input(), options })) {
       if (msg.type === "system" && msg.subtype === "init") {
         sessionId = msg.session_id;
         yield { type: "session", sessionId, skills: msg.skills ?? [] };
@@ -184,6 +224,10 @@ export async function* runChatAgent(args: RunArgs): AsyncGenerator<AgentEvent> {
         yield* flushIntents();
       } else if (msg.type === "result") {
         yield* flushIntents();
+        // A message can wait. The agent answers it in a new turn of the same run, and the cost total only grows.
+        if (inbox.queue.length) continue;
+        inbox.closed = true;
+        inbox.wake?.();
         const billed = await recordUsage({ userId: args.userId, sessionId, modelUsage: msg.modelUsage });
         yield { type: "done", costUsd: billed.costUsd, chargedUsd: billed.chargedUsd, turns: msg.num_turns, stopReason: msg.subtype };
       }
@@ -191,6 +235,9 @@ export async function* runChatAgent(args: RunArgs): AsyncGenerator<AgentEvent> {
   } catch (err) {
     yield* flushIntents();
     yield { type: "error", message: err instanceof Error ? err.message : String(err) };
+  } finally {
+    inbox.closed = true;
+    inbox.wake?.();
+    if (inboxes.get(args.userId) === inbox) inboxes.delete(args.userId);
   }
 }
-    while (walletRequests.length) yield { type: "wallet_request", request: walletRequests.shift()! };

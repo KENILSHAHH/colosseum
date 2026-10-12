@@ -6,7 +6,7 @@ import { z } from "zod";
 import { Receipt } from "mppx";
 import {
   checkBudget, config, ensureUser, executeIntent, getDepositWallet, getIntent, getOrCreateWallet, getPositions, isExpired, listDeposits, listIntents,
-  migrate, privyEnabled, sponsorAddress, startDepositSweeper, syncDepositWallet, walletSender, privySignIn, promptPriceUsd, recordCharge, runChatAgent, signToken, sql, startLlmProxy, transition, updateWalletSettings, verifyToken, withdrawToOwner, type AgentEvent,
+  migrate, privyEnabled, sponsorAddress, startDepositSweeper, syncDepositWallet, walletSender, privySignIn, promptPriceUsd, recordCharge, runChatAgent, sendToRun, signToken, sql, startLlmProxy, transition, updateWalletSettings, verifyToken, withdrawToOwner, type AgentEvent,
 } from "@app/core";
 import { delegation, jobs, lifi } from "@app/core";
 import { cancelGuard, listGuards } from "@app/core/guards";
@@ -172,6 +172,12 @@ function chatStream(userId: string, body: z.infer<typeof ChatBody>, signal: Abor
   });
   return new Response(stream, { headers: SSE_HEADERS });
 }
+
+// A message for the run that is active now. The agent reads it before its next step. It adds no price: the run is one prompt.
+app.post("/chat/message", async (c) => {
+  const { prompt } = z.object({ prompt: z.string().min(1).max(20_000) }).parse(await c.req.json());
+  return sendToRun(c.get("userId"), prompt) ? c.json({ queued: true }, 202) : c.json({ error: "No run is active." }, 409);
+});
 
 app.post("/chat", async (c) => {
   const userId = c.get("userId");
