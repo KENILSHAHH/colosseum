@@ -16,6 +16,8 @@ import * as delegation from "../delegation";
 import { executeIntent } from "../executors/index";
 import { createIntent, transition, type Intent, type IntentKind } from "../intents";
 import * as jobs from "../jobs";
+import * as solana from "../adapters/solana";
+import { getSolanaWallet } from "../privy";
 import * as memory from "../memory";
 import * as flash from "../flashExecutor";
 import { buildAaveV4Unwind } from "../unwind";
@@ -472,6 +474,37 @@ export function buildTools(ctx: ToolContext) {
         return { status: res.status, body: text.length > 20_000 ? `${text.slice(0, 20_000)}… (cut)` : JSON.parse(text) };
       }), read),
 
+    tool("solana_overview", "The user's Solana wallet (a Privy wallet): its address, whether the server can sign for it, and every token with its USD value.",
+      {}, run(async () => {
+        const sw = await getSolanaWallet(ctx.userId);
+        if (!sw) return { solana: null, note: "The user has no Solana wallet yet. It is created at sign-in; ask the user to sign in again." };
+        return { address: sw.address, serverCanSign: sw.enabled, note: sw.enabled ? undefined : "The server signer is added when the user opens the app. Until then the agent cannot send from this wallet.", balances: await solana.balances(sw.address) };
+      }), read),
+
+    tool("sol_swap", "Swap any Solana token for another from the user's Solana wallet through Jupiter Ultra (best route; Jupiter lands it). Give symbols or mints. The amount is in whole units of `from`. The wallet needs a little SOL for fees unless the swap is gasless.",
+      { from: z.string(), to: z.string(), amount: z.number().positive(), maxSlippagePct: z.number().min(0.05).max(10).optional() },
+      run(async (a) => {
+        const sw = await getSolanaWallet(ctx.userId);
+        if (!sw) throw new Error("The user has no Solana wallet yet.");
+        const q = await jupiter.quoteSwap({ from: a.from, to: a.to, amount: a.amount, taker: sw.address });
+        if (q.error) throw new Error(`Jupiter: ${q.error}`);
+        const minOut = q.outAmount * (1 - (a.maxSlippagePct ?? 1) / 100);
+        return act("sol_swap", { from: q.input.mint, to: q.output.mint, amount: a.amount, minOut }, {
+          venue: "Jupiter", chain: "Solana", summary: `Swap ${a.amount} ${q.input.symbol} to about ${q.outAmount} ${q.output.symbol}`, route: q.route, priceImpactPct: q.priceImpactPct, minOut,
+          ...(sw.enabled ? {} : { warning: "The server signer is not on the Solana wallet yet. The user must open the app once before this can run." }),
+        }, 0);
+      })),
+
+    tool("solana_send_transaction", "Sign and send ANY Solana transaction from the user's Solana wallet. Build the transaction yourself (in the terminal with @solana/web3.js, or from an API that returns one, such as Kamino or DFlow) with the user's Solana address as fee payer and signer, serialize it unsigned to base64, and pass it here. It is simulated first. Use it for Kamino deposits, prediction markets, staking and anything else on Solana.",
+      { transaction: z.string().min(50).describe("Unsigned transaction, base64 (legacy or versioned)"), summary: z.string().min(10), usdValue: z.number().min(0) },
+      run(async (a) => {
+        const sw = await getSolanaWallet(ctx.userId);
+        if (!sw) throw new Error("The user has no Solana wallet yet.");
+        const sim = await solana.simulate(a.transaction);
+        if (!sim.ok) throw new Error(`Simulation failed (${sim.error}). Logs: ${sim.logs.join(" | ").slice(0, 1500)}`);
+        return act("solana_tx", { transaction: a.transaction }, { venue: "Solana", chain: "Solana", summary: a.summary, simulation: { ok: true, unitsConsumed: sim.unitsConsumed }, ...(sw.enabled ? {} : { warning: "The server signer is not on the Solana wallet yet." }) }, a.usdValue);
+      })),
+
     tool("hl_spot_order", "Buy or sell on a Hyperliquid spot pair (for example XAUT0/USDC for gold, UBTC/USDC, HYPE/USDC) with one IOC order from the Hyperliquid account. Hyperliquid needs at least 10 USD and one lot per order.",
       { pair: z.string(), side: z.enum(["buy", "sell"]), usd: z.number().positive(), slippageBps: z.number().int().min(1).max(500).optional() },
       run(async (a) => {
@@ -551,7 +584,7 @@ export function buildTools(ctx: ToolContext) {
 
 export const TOOL_NAMES = [
   "wallet_overview", "rates_compare", "hl_markets", "hl_account", "hl_outcomes", "sol_quote", "bridge_quote", "bridge_status", "aave_account", "aave_v4_markets", "aave_v4_account", "evm_simulate",
-  "hl_open_position", "hl_close_position", "hl_set_tpsl", "hl_open_orders", "hl_cancel_order", "aave_supply_borrow", "bridge", "evm_send_transactions", "guard_register_aave", "aave_v4_action", "hl_deposit", "job_schedule", "job_list", "job_cancel", "flash_run", "aave_v4_unwind", "swap", "hl_spot_order", "hl_action", "hl_info", "memory_save", "memory_recall", "memory_forget",
+  "hl_open_position", "hl_close_position", "hl_set_tpsl", "hl_open_orders", "hl_cancel_order", "aave_supply_borrow", "bridge", "evm_send_transactions", "guard_register_aave", "aave_v4_action", "hl_deposit", "job_schedule", "job_list", "job_cancel", "flash_run", "aave_v4_unwind", "swap", "hl_spot_order", "hl_action", "hl_info", "solana_overview", "sol_swap", "solana_send_transaction", "memory_save", "memory_recall", "memory_forget",
   "linked_wallet_overview", "linked_wallet_ask_to_sign", "linked_wallet_request_permission", "linked_wallet_permission_context", "linked_wallet_send_transactions",
 ];
 export const allToolNames = () => TOOL_NAMES.map((t) => `mcp__${SERVER_NAME}__${t}`);

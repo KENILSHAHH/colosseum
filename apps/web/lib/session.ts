@@ -79,19 +79,24 @@ export function useSession() {
   const { addSigners } = useSigners();
   const signerTried = useRef(false);
   const deposit = me.data?.deposit;
+  const sol = me.data?.solana;
   useEffect(() => {
-    if (!deposit?.address || deposit.enabled || !deposit.signerId || signerTried.current) return;
+    const evmMissing = !!deposit?.address && !deposit.enabled;
+    const solMissing = !!sol?.address && !sol.enabled;
+    if ((!evmMissing && !solMissing) || !deposit?.signerId || signerTried.current) return;
     signerTried.current = true;
     void (async () => {
       try {
-        await addSigners({ address: deposit.address!, signers: [{ signerId: deposit.signerId!, policyIds: [] }] });
+        // The same server signer on the EVM wallet and on the Solana wallet.
+        if (evmMissing) await addSigners({ address: deposit.address!, signers: [{ signerId: deposit.signerId!, policyIds: [] }] });
+        if (solMissing) await addSigners({ address: sol.address, signers: [{ signerId: deposit.signerId!, policyIds: [] }] });
         await post("/deposit/enable");
         await qc.invalidateQueries({ queryKey: ["me"] });
       } catch (e) {
         console.warn("The server signer was not added to the Privy wallet:", e);
       }
     })();
-  }, [deposit?.address, deposit?.enabled, deposit?.signerId, addSigners, qc]);
+  }, [deposit?.address, deposit?.enabled, deposit?.signerId, sol?.address, sol?.enabled, addSigners, qc]);
 
   const signIn = useCallback(() => {
     setError(null);

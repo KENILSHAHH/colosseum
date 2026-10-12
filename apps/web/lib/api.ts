@@ -45,6 +45,8 @@ export interface Me {
   linkedWallet: string | null;
   /** The Privy wallet of the user. Tokens that arrive there convert to OUSD on Tempo when `enabled` is true. */
   deposit: { address: string | null; enabled: boolean; signerId: string | null } | null;
+  /** The Privy Solana wallet. The server signs for it once `enabled` is true. */
+  solana: { address: string; enabled: boolean } | null;
   wallet: { address: string; autoExecute: boolean; maxActionUsd: number };
   pricing: { promptUsd: number; actionUsd: number; guardMinuteUsd: number };
   mppEnabled: boolean;

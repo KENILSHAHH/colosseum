@@ -206,3 +206,7 @@ create table if not exists agent_memory (
 );
 create index if not exists agent_memory_scope on agent_memory(scope, created_at desc);
 create index if not exists agent_memory_user on agent_memory(user_id, created_at desc);
+
+-- The Privy Solana wallet of the user, and whether the server signer is on it.
+alter table users add column if not exists solana_wallet_id text;
+alter table users add column if not exists solana_signer boolean not null default false;

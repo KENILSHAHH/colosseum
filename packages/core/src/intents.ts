@@ -13,6 +13,8 @@ export type IntentKind =
   | "hl_deposit"
   | "hl_spot_order"
   | "hl_action"
+  | "sol_swap"
+  | "solana_tx"
   | "guard_create"
   | "job_create"
   | "aave_supply_borrow"

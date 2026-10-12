@@ -15,6 +15,8 @@ const Env = z.object({
   // Server signer for the Privy wallet of a user (key quorum id and its P-256 private key). The deposit converter uses it.
   PRIVY_SIGNER_ID: z.string().optional(),
   PRIVY_AUTHORIZATION_KEY: z.string().optional(),
+  // "true": Privy pays the Solana fees (fee sponsorship must be on in the Privy dashboard).
+  PRIVY_SOLANA_SPONSOR: z.enum(["true", "false"]).default("false"),
   // Gas sponsor (EIP-7702). One key, the same address on every EVM chain. It sends the transactions of the users and pays the gas.
   SPONSOR_PRIVATE_KEY: z.string().optional(),
   SPONSOR_DAILY_TXS: z.coerce.number().default(200),

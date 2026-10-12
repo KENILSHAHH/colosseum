@@ -13,6 +13,8 @@ import { encodeFunctionData, erc20Abi } from "viem";
 import { HL_BRIDGE_ARBITRUM } from "../adapters/hyperliquid";
 import { USDC } from "../registry/chains";
 import { getOrCreateWallet } from "../wallet";
+import { getSolanaWallet, solanaSign, solanaSignAndSend } from "../privy";
+import * as jupiter from "../adapters/jupiter";
 import { executeOpen, executeReduce, executeCancel, executeHlAction, executeSpotOrder, executeTpsl } from "./hyperliquid";
 
 async function logAction(intent: Intent, chain: string, txHash: string) {
@@ -44,6 +46,23 @@ async function run(intent: Intent, address: string): Promise<Record<string, unkn
       const first = await sendTransactions(intent.userId, "arbitrum", [{ to: usdc, data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [hlAddress, amount] }), value: "0", description: "Send USDC to the Hyperliquid account" }]);
       const second = await sendTransactions(intent.userId, "arbitrum", [{ to: usdc, data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [HL_BRIDGE_ARBITRUM, amount] }), value: "0", description: "Deposit to Hyperliquid" }], { legacy: true });
       return { receipts: [...first, ...second], hyperliquidAccount: hlAddress };
+    }
+    case "sol_swap": {
+      // Jupiter Ultra: a fresh order for the wallet, signed by Privy, then Jupiter lands it.
+      const sw = await getSolanaWallet(intent.userId);
+      if (!sw?.enabled) throw new Error("The Solana wallet has no server signer yet.");
+      const q = await jupiter.quoteSwap({ from: p.from, to: p.to, amount: p.amount, taker: sw.address });
+      if (!q.transaction || !q.requestId) throw new Error(`Jupiter gave no transaction: ${q.error ?? "unknown reason"}.`);
+      if (q.outAmount < p.minOut) throw new Error(`The price moved: Jupiter now gives ${q.outAmount}, the confirmed minimum was ${p.minOut}.`);
+      const res = await jupiter.executeSwap(await solanaSign(sw.walletId, q.transaction), q.requestId);
+      if (res.status !== "Success") throw new Error(`Jupiter did not land the swap: ${res.error ?? res.status}.`);
+      return { signature: res.signature, explorer: `https://solscan.io/tx/${res.signature}`, inAmount: q.inAmount, outAmount: q.outAmount };
+    }
+    case "solana_tx": {
+      const sw = await getSolanaWallet(intent.userId);
+      if (!sw?.enabled) throw new Error("The Solana wallet has no server signer yet.");
+      const signature = await solanaSignAndSend(sw.walletId, p.transaction);
+      return { signature, explorer: `https://solscan.io/tx/${signature}` };
     }
     case "hl_action":
       return executeHlAction(intent.userId, p.method, p.params);

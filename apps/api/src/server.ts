@@ -6,7 +6,7 @@ import { z } from "zod";
 import { Receipt } from "mppx";
 import {
   config, ensureUser, executeIntent, getDepositWallet, getIntent, getOrCreateWallet, getPositions, isExpired, listDeposits, listIntents,
-  migrate, privyEnabled, sponsorAddress, syncDepositWallet, walletSender, privySignIn, promptPriceUsd, recordCharge, runChatAgent, sendToRun, signToken, sql, startLlmProxy, transition, updateWalletSettings, verifyToken, withdrawToOwner, type AgentEvent,
+  migrate, privyEnabled, sponsorAddress, syncDepositWallet, syncSolanaWallet, getSolanaWallet, walletSender, privySignIn, promptPriceUsd, recordCharge, runChatAgent, sendToRun, signToken, sql, startLlmProxy, transition, updateWalletSettings, verifyToken, withdrawToOwner, type AgentEvent,
 } from "@app/core";
 import { delegation, jobs, lifi } from "@app/core";
 import { cancelGuard, listGuards } from "@app/core/guards";
@@ -67,6 +67,7 @@ app.get("/me", async (c) => {
     wallet: await getOrCreateWallet(userId),
     linkedWallet: await delegation.getLinkedWallet(userId),
     deposit: await getDepositWallet(userId).then(({ address, enabled, signerId }) => ({ address, enabled, signerId })),
+    solana: await getSolanaWallet(userId).then((w) => (w ? { address: w.address, enabled: w.enabled } : null)).catch(() => null),
     pricing: { promptUsd: promptPriceUsd(), actionUsd: cfg.PRICE_ACTION_USD, guardMinuteUsd: cfg.PRICE_GUARD_MINUTE_USD },
     mppEnabled: mppEnabled(),
   });
@@ -302,7 +303,11 @@ app.post("/billing/topup", async (c) => {
 // ── Deposits ───────────────────────────────────────────────────────────────
 // The Privy wallet of the user is the deposit address. The converter moves each token that arrives there to OUSD on Tempo.
 // The browser calls this route after the user added the server signer to the Privy wallet.
-app.post("/deposit/enable", async (c) => c.json(await syncDepositWallet(c.get("userId")).then(({ address, enabled, signerId }) => ({ address, enabled, signerId }))));
+app.post("/deposit/enable", async (c) => {
+  const userId = c.get("userId");
+  const [evm, sol] = await Promise.all([syncDepositWallet(userId), syncSolanaWallet(userId).catch(() => null)]);
+  return c.json({ address: evm.address, enabled: evm.enabled, signerId: evm.signerId, solana: sol ? { address: sol.address, enabled: sol.enabled } : null });
+});
 app.get("/deposit/history", async (c) => c.json(await listDeposits(c.get("userId"))));
 app.get("/deposit/options", (c) => c.json({ chains: lifi.DEPOSIT_CHAINS, symbols: lifi.DEPOSIT_SYMBOLS }));
 

@@ -86,3 +86,45 @@ export function depositAccount(d: { address: string; walletId: string }): Accoun
   if (!key) throw new Error("PRIVY_AUTHORIZATION_KEY is not set on the server.");
   return createViemAccount(privy(), { walletId: d.walletId, address: d.address as Hex, authorizationContext: { authorization_private_keys: [key] } }) as unknown as Account;
 }
+
+// ── The Solana wallet: the Privy Solana wallet of the user ────────────────────
+const SOLANA_MAINNET = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
+export interface SolanaWallet { address: string; walletId: string; enabled: boolean }
+
+/** Read the Privy Solana wallet of the user from Privy and store it. `enabled` is true after the user added the server signer. */
+export async function syncSolanaWallet(userId: string): Promise<SolanaWallet | null> {
+  const [u] = await sql()<{ privy_did: string | null }[]>`select privy_did from users where id = ${userId}`;
+  if (!u?.privy_did || !privyEnabled()) return null;
+  const user = await privy().users()._get(u.privy_did);
+  const w = user.linked_accounts.find((a) => a.type === "wallet" && a.chain_type === "solana" && a.connector_type === "embedded") as { id?: string | null; address: string } | undefined;
+  if (!w?.id) return null;
+  const signerId = config().PRIVY_SIGNER_ID;
+  const full = (await privy().wallets().get(w.id)) as unknown as { additional_signers?: { signer_id: string }[] };
+  const enabled = !!signerId && !!full.additional_signers?.some((s) => s.signer_id === signerId);
+  await sql()`update users set solana_address = ${w.address}, solana_wallet_id = ${w.id}, solana_signer = ${enabled} where id = ${userId}`;
+  return { address: w.address, walletId: w.id, enabled };
+}
+
+export async function getSolanaWallet(userId: string): Promise<SolanaWallet | null> {
+  const [u] = await sql()<{ solana_address: string | null; solana_wallet_id: string | null; solana_signer: boolean }[]>`select solana_address, solana_wallet_id, solana_signer from users where id = ${userId}`;
+  if (u?.solana_address && u.solana_wallet_id && u.solana_signer) return { address: u.solana_address, walletId: u.solana_wallet_id, enabled: true };
+  return syncSolanaWallet(userId);
+}
+
+const authorization = () => {
+  const key = config().PRIVY_AUTHORIZATION_KEY;
+  if (!key) throw new Error("PRIVY_AUTHORIZATION_KEY is not set on the server.");
+  return { authorization_private_keys: [key] };
+};
+
+/** Sign a Solana transaction (base64) with the Solana wallet of the user. Returns the signed transaction, base64. */
+export async function solanaSign(walletId: string, transaction: string): Promise<string> {
+  const r = (await privy().wallets().solana().signTransaction(walletId, { transaction, authorization_context: authorization() } as never)) as unknown as { signed_transaction: string };
+  return r.signed_transaction;
+}
+
+/** Sign and send a Solana transaction (base64). `sponsor` asks Privy to pay the fee when fee sponsorship is on for the app. */
+export async function solanaSignAndSend(walletId: string, transaction: string, sponsor = config().PRIVY_SOLANA_SPONSOR === "true"): Promise<string> {
+  const r = (await privy().wallets().solana().signAndSendTransaction(walletId, { transaction, caip2: SOLANA_MAINNET, ...(sponsor ? { sponsor: true } : {}), authorization_context: authorization() } as never)) as unknown as { hash: string };
+  return r.hash;
+}
