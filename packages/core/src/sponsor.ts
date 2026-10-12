@@ -22,7 +22,7 @@ import type { EvmTx } from "./adapters/evm";
 import { config } from "./config";
 import { sql } from "./db";
 import { CHAINS, type ChainKey } from "./registry/chains";
-import { publicClient, viemChain, walletAccount } from "./wallet";
+import { legacyAccount, publicClient, viemChain, walletAccount } from "./wallet";
 
 export const SPONSORED_CHAINS = ["ethereum", "arbitrum", "base", "robinhood"] as const satisfies readonly ChainKey[];
 /** Deterministic deployment proxy (CREATE2). A delegated wallet cannot use CREATE through `execute`, so a deployment goes through it. */
@@ -84,8 +84,8 @@ export interface SponsoredResult { hash: Hex; block: number; gasUsed: string; de
  * A call with `to: null` deploys a contract through the CREATE2 proxy. Its constructor sees the proxy as `msg.sender`.
  */
 /** The redeem transaction that the sponsor sends for these calls of the wallet of the user. */
-async function buildSponsored(userId: string, chain: ChainKey, txs: EvmTx[]) {
-  const owner = await walletAccount(userId);
+async function buildSponsored(userId: string, chain: ChainKey, txs: EvmTx[], opts: { legacy?: boolean } = {}) {
+  const owner = opts.legacy ? await legacyAccount(userId) : await walletAccount(userId);
   const chainId = CHAINS[chain].chainId!;
   const env = getSmartAccountsEnvironment(chainId);
   const manager = env.DelegationManager as Address;
@@ -136,13 +136,13 @@ export async function simulateSponsored(userId: string, chain: ChainKey, txs: Ev
   }
 }
 
-export async function sendSponsored(userId: string, chain: ChainKey, txs: EvmTx[]): Promise<SponsoredResult> {
+export async function sendSponsored(userId: string, chain: ChainKey, txs: EvmTx[], opts: { legacy?: boolean } = {}): Promise<SponsoredResult> {
   if (!isSponsored(chain)) throw new Error(`Gas sponsorship is not available on ${CHAINS[chain].name}.`);
   const limit = config().SPONSOR_DAILY_TXS;
   const [used] = await sql()<{ n: string }[]>`select count(*) as n from sponsored_txs where user_id = ${userId} and created_at > now() - interval '24 hours'`;
   if (Number(used?.n ?? 0) >= limit) throw new Error(`The daily limit of ${limit} sponsored transactions is reached. Try again tomorrow.`);
 
-  const { owner, manager, implementation, reader, relayer, data, deployed } = await buildSponsored(userId, chain, txs);
+  const { owner, manager, implementation, reader, relayer, data, deployed } = await buildSponsored(userId, chain, txs, opts);
 
   return inOrder(chain, async () => {
     const [code, balance] = await Promise.all([reader.getCode({ address: owner.address }), reader.getBalance({ address: relayer.account.address })]);

@@ -1,20 +1,21 @@
 // Send agent-built EVM transactions from the user's agent wallet, in order, and read each receipt.
-import { encodeFunctionData, erc20Abi, parseUnits, type Address } from "viem";
+import { createWalletClient, encodeFunctionData, erc20Abi, http, parseUnits, type Address } from "viem";
 import type { EvmTx } from "../adapters/evm";
 import { accountSender, type Sender } from "../adapters/lifi";
 import { CHAINS, USDC, type ChainKey } from "../registry/chains";
 import { isSponsored, sendSponsored } from "../sponsor";
-import { publicClient, signerClient, walletAccount } from "../wallet";
+import { legacyAccount, publicClient, signerClient, viemChain, walletAccount } from "../wallet";
 
 export interface SentTx { hash: string; explorer: string; block: number; description: string; contractAddress: string | null; gasUsed: string }
 
-export async function sendTransactions(userId: string, chain: ChainKey, txs: EvmTx[]): Promise<SentTx[]> {
+/** `legacy` sends from the legacy key (the Hyperliquid account) in place of the wallet. */
+export async function sendTransactions(userId: string, chain: ChainKey, txs: EvmTx[], opts: { legacy?: boolean } = {}): Promise<SentTx[]> {
   // With gas sponsorship, the sponsor sends one transaction and the wallet of the user makes all the calls in it. They succeed or fail together.
   if (isSponsored(chain)) {
-    const r = await sendSponsored(userId, chain, txs);
+    const r = await sendSponsored(userId, chain, txs, opts);
     return txs.map((tx, i) => ({ hash: r.hash, explorer: `${CHAINS[chain].explorer}/tx/${r.hash}`, block: r.block, description: tx.description, contractAddress: r.deployed[i] ?? null, gasUsed: r.gasUsed }));
   }
-  const wallet = await signerClient(userId, chain);
+  const wallet = opts.legacy ? createWalletClient({ account: await legacyAccount(userId), chain: viemChain(chain), transport: http() }) : await signerClient(userId, chain);
   const reader = publicClient(chain);
   const sent: SentTx[] = [];
   for (const [i, tx] of txs.entries()) {

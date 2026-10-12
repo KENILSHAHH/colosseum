@@ -6,7 +6,7 @@ import { z } from "zod";
 import { Receipt } from "mppx";
 import {
   config, ensureUser, executeIntent, getDepositWallet, getIntent, getOrCreateWallet, getPositions, isExpired, listDeposits, listIntents,
-  migrate, privyEnabled, sponsorAddress, startDepositSweeper, syncDepositWallet, walletSender, privySignIn, promptPriceUsd, recordCharge, runChatAgent, sendToRun, signToken, sql, startLlmProxy, transition, updateWalletSettings, verifyToken, withdrawToOwner, type AgentEvent,
+  migrate, privyEnabled, sponsorAddress, syncDepositWallet, walletSender, privySignIn, promptPriceUsd, recordCharge, runChatAgent, sendToRun, signToken, sql, startLlmProxy, transition, updateWalletSettings, verifyToken, withdrawToOwner, type AgentEvent,
 } from "@app/core";
 import { delegation, jobs, lifi } from "@app/core";
 import { cancelGuard, listGuards } from "@app/core/guards";
@@ -108,7 +108,8 @@ app.delete("/permissions/:id", async (c) => c.json({ removed: await delegation.r
 
 app.get("/positions", async (c) => {
   const userId = c.get("userId");
-  return c.json(await getPositions(userId, (await getOrCreateWallet(userId)).address));
+  const w = await getOrCreateWallet(userId);
+  return c.json(await getPositions(userId, w.address, w.hlAddress));
 });
 
 // ── Chat ───────────────────────────────────────────────────────────────────
@@ -325,7 +326,8 @@ app.onError((err, c) => {
 
 await migrate();
 startLlmProxy();
-const sweeper = startDepositSweeper();
+// The Privy wallet is now the wallet of the user, so the converter that swept it to OUSD stays off.
+const sweeper = false;
 jobs.startJobRunner();
 serve({ fetch: app.fetch, port: config().API_PORT });
 console.log(`API on http://localhost:${config().API_PORT}  (MPP ${mppEnabled() ? "on, Tempo mainnet" : "off"}, deposit converter ${sweeper ? "on" : "off"})`);

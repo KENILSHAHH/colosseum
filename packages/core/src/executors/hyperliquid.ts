@@ -4,14 +4,14 @@ import { ExchangeClient, HttpTransport } from "@nktkas/hyperliquid";
 import * as hl from "../adapters/hyperliquid";
 import { postJson } from "../adapters/http";
 import { config } from "../config";
-import { walletAccount } from "../wallet";
+import { legacyAccount } from "../wallet";
 
 /**
  * The agent wallet is the Hyperliquid account. It signs orders with its own key.
  * Account data is read with the wallet address.
  */
 async function agentClient(userId: string) {
-  return new ExchangeClient({ transport: new HttpTransport(), wallet: await walletAccount(userId) });
+  return new ExchangeClient({ transport: new HttpTransport(), wallet: await legacyAccount(userId) });
 }
 
 function builder() {

@@ -13,7 +13,7 @@ const INTERVAL_MS = Number(process.env.GUARD_INTERVAL_MS ?? 1_000);
 async function checkHlGuard(guard: Guard) {
   const params = guard.params as HlGuardParams;
   const market = await hyperliquid.getMarket(params.coin);
-  const { address } = await getOrCreateWallet(guard.userId);
+  const { hlAddress: address } = await getOrCreateWallet(guard.userId);
   const account = await hyperliquid.getAccount(address, [market.dex]);
   const position = account.positions.find((p) => p.coin === market.coin);
   const verdict = evaluateHlGuard(params, position);

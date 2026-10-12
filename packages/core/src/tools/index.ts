@@ -58,6 +58,8 @@ const toEvmTx = (t: z.infer<typeof TxShape>): evm.EvmTx => ({ to: t.to as `0x${s
 
 export function buildTools(ctx: ToolContext) {
   const address = ctx.wallet.address;
+  // Hyperliquid reads and actions use the Hyperliquid account.
+  const hlAddress = ctx.wallet.hlAddress;
   const run = <A>(fn: (args: A) => Promise<unknown>) => async (args: A) => {
     try {
       return ok(await fn(args));
@@ -90,7 +92,7 @@ export function buildTools(ctx: ToolContext) {
   const tools = [
     // ── Read ────────────────────────────────────────────────────────────────
     tool("wallet_overview", "The user's agent wallet: address, native and USDC balances on Ethereum, Arbitrum and Base, Hyperliquid balances and positions, Aave accounts, active guards. Call it before any action to know what funds exist and where.",
-      {}, run(async () => ({ ...(await getPositions(ctx.userId, address)), gasSponsor: sponsorEnabled() ? { on: true, chains: SPONSORED_CHAINS, note: "The wallet needs no native gas on these chains." } : { on: false } })), read),
+      {}, run(async () => ({ ...(await getPositions(ctx.userId, address, hlAddress)), hyperliquidAccount: hlAddress, gasSponsor: sponsorEnabled() ? { on: true, chains: SPONSORED_CHAINS, note: "The wallet needs no native gas on these chains." } : { on: false } })), read),
 
     tool("rates_compare", "Compare live supply (lending) rates for one asset across Ethereum, Arbitrum, Base, Solana, HyperEVM, Tempo and Robinhood Chain. Returns rows with APY, TVL and a source link per row.",
       { asset: z.string().describe("Token symbol, for example USDC"), chains: z.array(z.string()).optional().describe("Chain name filter"), minTvlUsd: z.number().optional() },
@@ -104,7 +106,7 @@ export function buildTools(ctx: ToolContext) {
       }), read),
 
     tool("hl_account", "Read a Hyperliquid account: balances per dex and open positions with entry price, liquidation price and distance to liquidation. Default: the agent wallet.",
-      { address: z.string().optional() }, run(({ address: a }) => hl.getAccount(a ?? address)), read),
+      { address: z.string().optional() }, run(({ address: a }) => hl.getAccount(a ?? hlAddress)), read),
 
     tool("hl_outcomes", "List Hyperliquid HIP-4 outcome (prediction) markets. Fully collateralized, no leverage.",
       { query: z.string().optional(), limit: z.number().int().max(50).optional() },
@@ -282,7 +284,7 @@ export function buildTools(ctx: ToolContext) {
       { coin: z.string(), kind: z.enum(["sl", "tp"]), triggerPx: z.number().positive(), fraction: z.number().gt(0).max(1).default(1).describe("Part of the position. 1 = all") },
       run(async (a) => {
         const market = await hl.getMarket(a.coin);
-        const pos = (await hl.getAccount(address, [market.dex])).positions.find((x) => x.coin === market.coin);
+        const pos = (await hl.getAccount(hlAddress, [market.dex])).positions.find((x) => x.coin === market.coin);
         if (!pos) throw new Error(`No open position in ${a.coin}.`);
         const isLong = pos.size > 0;
         const wrongSide = a.kind === "sl" ? (isLong ? a.triggerPx >= pos.markPx : a.triggerPx <= pos.markPx) : (isLong ? a.triggerPx <= pos.markPx : a.triggerPx >= pos.markPx);
@@ -296,7 +298,7 @@ export function buildTools(ctx: ToolContext) {
       })),
 
     tool("hl_open_orders", "List the open orders of the Hyperliquid account, with stop-loss and take-profit trigger orders and their order ids.",
-      {}, run(() => openOrders(address)), read),
+      {}, run(() => openOrders(hlAddress)), read),
 
     tool("hl_cancel_order", "Cancel an open Hyperliquid order, a stop-loss or a take-profit, by coin and order id (from hl_open_orders).",
       { coin: z.string(), orderId: z.number().int() },
@@ -305,7 +307,7 @@ export function buildTools(ctx: ToolContext) {
     tool("hl_close_position", "Close all or part of an open Hyperliquid position with reduce-only IOC orders.",
       { coin: z.string(), fraction: z.number().gt(0).max(1).describe("1 = full close") },
       run(async (a) => {
-        const pos = (await hl.getAccount(address)).positions.find((x) => x.coin.toLowerCase() === a.coin.toLowerCase());
+        const pos = (await hl.getAccount(hlAddress)).positions.find((x) => x.coin.toLowerCase() === a.coin.toLowerCase());
         if (!pos) throw new Error(`No open position in ${a.coin}.`);
         return act("hl_close_position", a, { venue: "Hyperliquid", market: pos.coin, currentSize: pos.size, closeSize: Math.abs(pos.size) * a.fraction, markPx: pos.markPx, unrealizedPnl: pos.unrealizedPnl, orderType: "reduce-only IOC" }, 0);
       })),
@@ -324,13 +326,9 @@ export function buildTools(ctx: ToolContext) {
         const amount = parseUnits(a.amountUsdc.toFixed(usdc.decimals), usdc.decimals);
         const held = await evm.evmClient("arbitrum").readContract({ address: usdc.address as `0x${string}`, abi: erc20Abi, functionName: "balanceOf", args: [address] });
         if (held < amount) throw new Error(`The wallet holds ${Number(held) / 1e6} USDC on Arbitrum. Move USDC to Arbitrum first with the bridge tool.`);
-        const txs: evm.EvmTx[] = [{ to: usdc.address as `0x${string}`, data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [hl.HL_BRIDGE_ARBITRUM, amount] }), value: "0", description: `Deposit ${a.amountUsdc} USDC to Hyperliquid through the official bridge` }];
-        const simulation = await evm.simulate("arbitrum", address, txs);
-        if (simulation.results[0]?.status === "revert") throw new Error(`Simulation: the deposit reverts (${simulation.results[0].error}). Nothing was sent.`);
-        return act("evm_transactions", { chain: "arbitrum", transactions: txs }, {
-          venue: "Hyperliquid bridge", chain: CHAINS.arbitrum.name, summary: `Deposit ${a.amountUsdc} USDC to Hyperliquid. No fee. It arrives in less than a minute.`,
-          sources: ["https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/bridge2"], simulation,
-          transactions: txs.map((t) => ({ ...t, chainId: CHAINS.arbitrum.chainId })),
+        return act("hl_deposit", { amount: amount.toString() }, {
+          venue: "Hyperliquid bridge", chain: CHAINS.arbitrum.name, summary: `Deposit ${a.amountUsdc} USDC to your Hyperliquid account ${hlAddress} through the official bridge. No fee. It arrives in less than a minute.`,
+          sources: ["https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/bridge2"],
         }, a.amountUsdc);
       })),
 

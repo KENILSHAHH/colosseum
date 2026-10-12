@@ -9,6 +9,10 @@ import { transition, type Intent } from "../intents";
 import type { ChainKey } from "../registry/chains";
 import { createJob } from "../jobs";
 import { sendTransactions } from "./evm";
+import { encodeFunctionData, erc20Abi } from "viem";
+import { HL_BRIDGE_ARBITRUM } from "../adapters/hyperliquid";
+import { USDC } from "../registry/chains";
+import { getOrCreateWallet } from "../wallet";
 import { executeOpen, executeReduce, executeCancel, executeTpsl } from "./hyperliquid";
 
 async function logAction(intent: Intent, chain: string, txHash: string) {
@@ -16,21 +20,31 @@ async function logAction(intent: Intent, chain: string, txHash: string) {
 }
 
 async function run(intent: Intent, address: string): Promise<Record<string, unknown>> {
+  // Hyperliquid actions use the Hyperliquid account of the user (the legacy key).
+  const hlAddress = (await getOrCreateWallet(intent.userId)).hlAddress;
   const p = intent.params as Record<string, any>;
   switch (intent.kind) {
     case "hl_open_position": {
-      const fill = await executeOpen(intent.userId, address, { coin: p.coin, side: p.side, marginUsd: p.marginUsd, leverage: p.leverage, slippageBps: p.slippageBps }, String(intent.preview.limitPx));
+      const fill = await executeOpen(intent.userId, hlAddress, { coin: p.coin, side: p.side, marginUsd: p.marginUsd, leverage: p.leverage, slippageBps: p.slippageBps }, String(intent.preview.limitPx));
       await logAction(intent, "hyperliquid", `oid:${fill.orderId}`);
       const guard = p.guard ? await createGuard(intent.userId, "hyperliquid", normalizeHlParams({ coin: fill.coin, triggerDistancePct: p.guard.triggerDistancePct, action: p.guard.action as HlGuardAction })) : null;
-      return { ...fill, explorer: `https://app.hyperliquid.xyz/explorer/address/${address}`, guardId: guard?.id ?? null };
+      return { ...fill, explorer: `https://app.hyperliquid.xyz/explorer/address/${hlAddress}`, guardId: guard?.id ?? null };
     }
     case "hl_close_position": {
-      const res = await executeReduce(intent.userId, address, { coin: p.coin, fraction: p.fraction, maxSlippageBps: 100 });
+      const res = await executeReduce(intent.userId, hlAddress, { coin: p.coin, fraction: p.fraction, maxSlippageBps: 100 });
       await logAction(intent, "hyperliquid", `close:${sha256Hex(JSON.stringify(res.fills)).slice(0, 16)}`);
       return res;
     }
     case "hl_tpsl":
-      return executeTpsl(intent.userId, address, { coin: p.coin, kind: p.kind, triggerPx: p.triggerPx, fraction: p.fraction });
+      return executeTpsl(intent.userId, hlAddress, { coin: p.coin, kind: p.kind, triggerPx: p.triggerPx, fraction: p.fraction });
+    case "hl_deposit": {
+      // The Hyperliquid account is the legacy key: the wallet sends it the USDC, and it deposits through the official bridge.
+      const usdc = USDC.arbitrum!.address as `0x${string}`;
+      const amount = BigInt(p.amount);
+      const first = await sendTransactions(intent.userId, "arbitrum", [{ to: usdc, data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [hlAddress, amount] }), value: "0", description: "Send USDC to the Hyperliquid account" }]);
+      const second = await sendTransactions(intent.userId, "arbitrum", [{ to: usdc, data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [HL_BRIDGE_ARBITRUM, amount] }), value: "0", description: "Deposit to Hyperliquid" }], { legacy: true });
+      return { receipts: [...first, ...second], hyperliquidAccount: hlAddress };
+    }
     case "hl_cancel_order":
       return executeCancel(intent.userId, { coin: p.coin, orderId: p.orderId });
     case "aave_supply_borrow":

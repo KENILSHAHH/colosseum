@@ -10,6 +10,7 @@ export type IntentKind =
   | "hl_close_position"
   | "hl_tpsl"
   | "hl_cancel_order"
+  | "hl_deposit"
   | "guard_create"
   | "job_create"
   | "aave_supply_borrow"

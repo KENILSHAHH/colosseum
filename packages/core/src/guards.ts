@@ -152,7 +152,7 @@ export async function superviseDecision(params: HlGuardParams, position: HlPosit
 /** Run the chosen action with the hard limits. Returns the result and the next guard status. */
 export async function executeHlGuardAction(guard: Guard, action: HlGuardAction) {
   const p = guard.params as HlGuardParams;
-  const { address } = await getOrCreateWallet(guard.userId);
+  const { hlAddress: address } = await getOrCreateWallet(guard.userId);
   if (action === "add_margin" && p.addMarginUsd > 0) {
     return { result: await executeAddMargin(guard.userId, { coin: p.coin, usd: p.addMarginUsd }), rearm: true };
   }

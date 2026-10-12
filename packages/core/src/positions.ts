@@ -14,10 +14,11 @@ const settle = async <T>(p: Promise<T>): Promise<{ data: T | null; error: string
   }
 };
 
-export async function getPositions(userId: string, address: Address) {
+/** `address` holds the EVM funds. `hlAddress` is the Hyperliquid account. */
+export async function getPositions(userId: string, address: Address, hlAddress: Address = address) {
   const [balances, hyper, aaveAccounts, v4, guards] = await Promise.all([
     settle(walletBalances(address)),
-    settle(hl.getAccount(address)),
+    settle(hl.getAccount(hlAddress)),
     settle(Promise.all((["ethereum", "arbitrum", "base"] as const).map((c) => aave.getAccount(c, address).then((a) => ({ ...a, chainKey: c })))) ),
     settle(aaveV4.getPositions(address)),
     settle(listGuards(userId)),
@@ -26,7 +27,7 @@ export async function getPositions(userId: string, address: Address) {
     address,
     asOf: new Date().toISOString(),
     balances: balances.data ?? [],
-    hyperliquid: hyper.data ?? { user: address, accounts: [], positions: [] },
+    hyperliquid: hyper.data ?? { user: hlAddress, accounts: [], positions: [] },
     aave: (aaveAccounts.data ?? []).filter((a) => a.collateralUsd > 0.01 || a.debtUsd > 0.01),
     /** Aave v4 on Ethereum: one position for each spoke. */
     aaveV4: (v4.data ?? []).filter((p) => p.suppliedUsd > 0.01 || p.debtUsd > 0.01),
