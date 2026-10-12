@@ -36,6 +36,13 @@ const TERMINAL_API_HOSTS = [
   "api.relay.link", "li.quest", "app.across.to", "lite-api.jup.ag", "quote-api.dflow.net",
   // Tempo and MPP
   "mpp.dev", "tempo.xyz",
+  // Swap and price APIs
+  "api.1inch.dev", "api.0x.org", "api.paraswap.io", "apiv5.paraswap.io", "api.odos.xyz", "api.cow.fi", "api.uniswap.org", "api.coingecko.com", "hermes.pyth.network",
+  // Contract sources and verification
+  "api.etherscan.io", "api.basescan.org", "api.arbiscan.io", "sourcify.dev", "repo.sourcify.dev",
+  // What the agent needs to build and test code: packages, compilers, source code
+  "github.com", "api.github.com", "raw.githubusercontent.com", "codeload.github.com", "objects.githubusercontent.com",
+  "registry.npmjs.org", "pypi.org", "files.pythonhosted.org", "crates.io", "static.crates.io", "binaries.soliditylang.org", "foundry.paradigm.xyz",
 ];
 
 /** The API hosts plus the RPC host of each chain, so a script and a local fork (anvil) can read the chains. */
@@ -50,6 +57,9 @@ function terminalAllowedDomains(): string[] {
   });
   return [...new Set([...TERMINAL_API_HOSTS, ...rpcs])];
 }
+
+/** Tool folders inside a home directory that the terminal must still read: Foundry and Node. */
+const TOOLCHAIN_DIRS = [path.join(process.env.HOME ?? "/home/defi", ".foundry"), path.join(process.env.HOME ?? "/home/defi", ".nvm"), path.join(process.env.HOME ?? "/home/defi", ".svm")];
 
 const PRODUCT_SKILLS = ["hyperliquid", "tempo-mpp", "solana-defi", "evm-lending", "bridging", "robinhood-chain"];
 
@@ -77,9 +87,25 @@ export interface RunArgs {
   signal?: AbortSignal;
 }
 
+const FILE_TOOLS = "Read|Write|Edit|Glob|Grep|NotebookEdit";
+
 export async function* runChatAgent(args: RunArgs): AsyncGenerator<AgentEvent> {
   const c = config();
   const { cwd, configDir } = workspaceFor(args.userId);
+  const base = path.dirname(cwd);
+  // The file tools do not run in the terminal sandbox. This hook keeps them inside the workspace of the user,
+  // so the agent cannot read the secrets of the server or the files of another user.
+  const insideWorkspace = (p: string) => {
+    const full = path.resolve(cwd, p);
+    return full === base || full.startsWith(base + path.sep);
+  };
+  const fileGuard = async (input: { tool_input?: unknown }) => {
+    const t = (input.tool_input ?? {}) as Record<string, unknown>;
+    const target = [t.file_path, t.path, t.notebook_path].find((v): v is string => typeof v === "string");
+    if (target && !insideWorkspace(target))
+      return { hookSpecificOutput: { hookEventName: "PreToolUse" as const, permissionDecision: "deny" as const, permissionDecisionReason: "Files outside your workspace are not available. Work inside the current directory." } };
+    return {};
+  };
   const pending: Intent[] = [];
   const wallet = await getOrCreateWallet(args.userId);
   const permissions: Permission[] = [];
@@ -104,11 +130,17 @@ export async function* runChatAgent(args: RunArgs): AsyncGenerator<AgentEvent> {
     // Tools that are not pre-approved are denied. No prompt can appear on a server.
     permissionMode: "dontAsk",
     // Terminal commands run in the OS sandbox: writes stay inside the workspace, and the network is limited to the app APIs and the chain RPCs.
-    sandbox: { enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, network: { allowedDomains: terminalAllowedDomains(), allowLocalBinding: true } },
+    // The terminal cannot read the code and the secrets of the server, the home directories, or the workspace of another user.
+    sandbox: {
+      enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false,
+      network: { allowedDomains: terminalAllowedDomains(), allowLocalBinding: true },
+      filesystem: { denyRead: [REPO_ROOT, path.resolve(c.WORKSPACES_DIR), "/home", "/root", "/Users", "/etc/caddy"], allowRead: [base, ...TOOLCHAIN_DIRS], allowWrite: [base] },
+    },
     includePartialMessages: true,
-    maxTurns: 40,
-    // One prompt can use at most 2.5 USD of model cost, also when the daily budget is higher.
-    maxBudgetUsd: Math.min(2.5, Math.max(0.5, c.USER_DAILY_LLM_BUDGET_USD / 2)),
+    // A long task (build, test on a fork, deploy, schedule) needs many steps. The daily budget of the user is the only cost limit.
+    maxTurns: 300,
+    maxBudgetUsd: c.USER_DAILY_LLM_BUDGET_USD,
+    hooks: { PreToolUse: [{ matcher: FILE_TOOLS, hooks: [fileGuard as never] }] },
     // The subprocess environment holds no secret. It reaches Claude through the local proxy with a session token.
     env: {
       PATH: process.env.PATH,
