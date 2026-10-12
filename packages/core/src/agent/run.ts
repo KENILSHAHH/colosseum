@@ -105,6 +105,8 @@ export interface RunArgs {
   /** Session id from a previous turn of the same chat. */
   resume?: string;
   signal?: AbortSignal;
+  /** Test mode: every action waits for a confirmation that never comes, so nothing executes, and no lesson is saved. */
+  dryRun?: boolean;
 }
 
 /** The open input of one running agent. A message sent during the run goes into it and the agent reads it before its next step. */
@@ -152,7 +154,7 @@ export async function* runChatAgent(args: RunArgs): AsyncGenerator<AgentEvent> {
     return {};
   };
   const pending: Intent[] = [];
-  const wallet = await getOrCreateWallet(args.userId);
+  const wallet = { ...(await getOrCreateWallet(args.userId)), ...(args.dryRun ? { autoExecute: false } : {}) };
   const permissions: Permission[] = [];
   const walletRequests: WalletRequest[] = [];
   const server = buildTools({ userId: args.userId, wallet, onIntent: (i) => pending.push(i), onPermission: (p) => permissions.push(p), onWalletRequest: (r) => walletRequests.push(r) });
@@ -260,7 +262,7 @@ export async function* runChatAgent(args: RunArgs): AsyncGenerator<AgentEvent> {
         inbox.wake?.();
         const billed = await recordUsage({ userId: args.userId, sessionId, modelUsage: msg.modelUsage });
         // Learn from this chat in the background. The user does not wait for it.
-        void reflectOnChat(args.userId, { ...record, steps: [...record.steps] }).then(
+        if (!args.dryRun) void reflectOnChat(args.userId, { ...record, steps: [...record.steps] }).then(
           (n) => n > 0 && console.log(`memory: saved ${n} lesson(s) from a chat of ${args.userId}`),
           (err) => console.error("memory: the review failed:", err instanceof Error ? err.message.split("\n")[0] : err),
         );
