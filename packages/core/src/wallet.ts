@@ -1,7 +1,7 @@
 // The agent wallet. One EVM key per user. The same address works on every EVM chain and on Hyperliquid.
 // The server holds the key, so this is a custodial design: the key is encrypted at rest (AES-256-GCM,
 // secret from KMS or KEY_ENCRYPTION_SECRET) and funds can leave only through agent actions or to the owner's sign-in address.
-import { createPublicClient, createWalletClient, defineChain, erc20Abi, formatUnits, http, parseUnits, type Address } from "viem";
+import { createPublicClient, createWalletClient, defineChain, erc20Abi, formatUnits, http, type Address } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { config } from "./config";
 import { decrypt, encrypt } from "./crypto";
@@ -37,7 +37,7 @@ export async function walletAccount(userId: string) {
   return privateKeyToAccount(decrypt(row.enc_key) as `0x${string}`);
 }
 
-function viemChain(chain: ChainKey) {
+export function viemChain(chain: ChainKey) {
   const c = CHAINS[chain];
   if (c.vm !== "evm" || !c.chainId) throw new Error(`${c.name} is not an EVM chain.`);
   return defineChain({ id: c.chainId, name: c.name, nativeCurrency: { name: "native", symbol: chain === "tempo" ? "USD" : chain === "hyperevm" ? "HYPE" : "ETH", decimals: 18 }, rpcUrls: { default: { http: [c.rpc()] } } });
@@ -68,23 +68,6 @@ export async function walletBalances(address: Address) {
       }
     }),
   );
-}
-
-/** Send funds from the agent wallet back to the owner. The destination is always the sign-in address. */
-export async function withdrawToOwner(userId: string, args: { chain: ChainKey; asset: "USDC" | "ETH"; amount: number }) {
-  const client = await signerClient(userId, args.chain);
-  const to = userId as Address;
-  let hash: `0x${string}`;
-  if (args.asset === "ETH") {
-    hash = await client.sendTransaction({ to, value: parseUnits(args.amount.toString(), 18) });
-  } else {
-    const usdc = USDC[args.chain];
-    if (!usdc) throw new Error(`No USDC entry for ${CHAINS[args.chain].name}.`);
-    hash = await client.writeContract({ address: usdc.address as Address, abi: erc20Abi, functionName: "transfer", args: [to, parseUnits(args.amount.toString(), usdc.decimals)] });
-  }
-  const receipt = await publicClient(args.chain).waitForTransactionReceipt({ hash, timeout: 120_000 });
-  if (receipt.status !== "success") throw new Error(`Withdrawal ${hash} reverted.`);
-  return { hash, explorer: `${CHAINS[args.chain].explorer}/tx/${hash}`, to };
 }
 
 export function maxActionUsdDefault() {

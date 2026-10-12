@@ -69,27 +69,55 @@ const gasCostOf = (q: LifiQuote, feeCap: bigint) => {
   return BigInt(q.transactionRequest.gasLimit ?? 0) * (feeCap > quoted ? feeCap : quoted);
 };
 
+/** Something that can send calls on a chain: a key that pays its own gas, or a wallet with a gas sponsor. */
+export interface Sender {
+  address: Address;
+  /** True when a sponsor pays the gas on this chain. The wallet then needs no native token. */
+  sponsoredOn(chainId: number): boolean;
+  /** Send the calls in order and wait for them. Returns the hash of the last transaction. */
+  send(chainId: number, calls: { to: Address; data: Hex; value: bigint; gas?: bigint }[]): Promise<Hex>;
+}
+
+/** A key as a sender. `rpcUrl` replaces the public RPC of the chain, for a paid endpoint or a local fork. */
+export function accountSender(account: Account, rpcUrl?: string): Sender {
+  return {
+    address: account.address,
+    sponsoredOn: () => false,
+    async send(chainId, calls) {
+      const chain = await viemChain(chainId);
+      const reader = createPublicClient({ chain, transport: http(rpcUrl) });
+      const signer = createWalletClient({ account, chain, transport: http(rpcUrl) });
+      let hash: Hex = "0x";
+      for (const c of calls) {
+        hash = await signer.sendTransaction({ to: c.to, data: c.data, value: c.value, gas: c.gas });
+        const r = await reader.waitForTransactionReceipt({ hash, timeout: 180_000 });
+        if (r.status !== "success") throw new Error(`The transaction ${hash} reverted.`);
+      }
+      return hash;
+    },
+  };
+}
+
 /**
- * Convert one token to OUSD on Tempo. `account` signs. The OUSD arrives at `toAddress`.
- * Default: the full balance. An ERC-20 moves in full, a native token keeps a reserve for gas.
+ * Convert one token to OUSD on Tempo. `sender` makes the calls. The OUSD arrives at `toAddress`.
+ * Default: the full balance. A native token keeps a reserve for gas when the sender pays its own gas.
  * `maxUsd` converts only about that value and leaves the rest in the wallet.
  */
-export async function convertToOusd(account: Account, args: { chainId: number; token: string; toAddress: string; rpcUrl?: string; maxUsd?: number }) {
+export async function convertToOusd(sender: Sender, args: { chainId: number; token: string; toAddress: string; rpcUrl?: string; maxUsd?: number }) {
   const chain = await viemChain(args.chainId);
-  // `rpcUrl` replaces the public RPC of the chain, for a paid endpoint or a local fork.
   const reader = createPublicClient({ chain, transport: http(args.rpcUrl) });
-  const signer = createWalletClient({ account, chain, transport: http(args.rpcUrl) });
   const native = args.token.toLowerCase() === NATIVE;
-  const nativeBalance = await reader.getBalance({ address: account.address });
-  const balance = native ? nativeBalance : await reader.readContract({ address: args.token as Address, abi: erc20Abi, functionName: "balanceOf", args: [account.address] });
+  const sponsored = sender.sponsoredOn(args.chainId);
+  const nativeBalance = await reader.getBalance({ address: sender.address });
+  const balance = native ? nativeBalance : await reader.readContract({ address: args.token as Address, abi: erc20Abi, functionName: "balanceOf", args: [sender.address] });
   if (balance <= 0n) throw new NothingToConvertError("The wallet does not hold this token.");
 
   // The wallet checks its balance against gas limit times the fee cap, so the reserve uses the same fee cap.
   const feeCap = await reader.estimateFeesPerGas().then((f) => f.maxFeePerGas ?? f.gasPrice ?? 0n).catch(() => 0n);
   let amount = balance;
-  if (native) {
+  if (native && !sponsored) {
     // A first quote gives the gas cost. The amount is the balance less a reserve for that gas.
-    const probe = await quote({ chainId: args.chainId, token: args.token, amount: balance / 2n, from: account.address, to: args.toAddress });
+    const probe = await quote({ chainId: args.chainId, token: args.token, amount: balance / 2n, from: sender.address, to: args.toAddress });
     amount = balance - gasCostOf(probe, feeCap) * GAS_RESERVE_FACTOR;
     if (amount <= 0n) throw new NothingToConvertError(`The ${chain.nativeCurrency.symbol} balance on ${chain.name} is only enough for gas.`);
   }
@@ -100,28 +128,23 @@ export async function convertToOusd(account: Account, args: { chainId: number; t
     const part = parseUnits((args.maxUsd / price).toFixed(info.decimals), info.decimals);
     if (part < amount) amount = part;
   }
-  const q = await quote({ chainId: args.chainId, token: args.token, amount, from: account.address, to: args.toAddress });
+  const q = await quote({ chainId: args.chainId, token: args.token, amount, from: sender.address, to: args.toAddress });
   const tx = q.transactionRequest;
-  const needed = gasCostOf(q, feeCap) + (native ? amount : 0n);
-  if (nativeBalance < needed) throw new NeedsGasError(`The wallet needs ${chain.nativeCurrency.symbol} on ${chain.name} for gas. It holds ${formatUnits(nativeBalance, 18)} and the route needs about ${formatUnits(needed, 18)}.`);
+  if (!sponsored) {
+    const needed = gasCostOf(q, feeCap) + (native ? amount : 0n);
+    if (nativeBalance < needed) throw new NeedsGasError(`The wallet needs ${chain.nativeCurrency.symbol} on ${chain.name} for gas. It holds ${formatUnits(nativeBalance, 18)} and the route needs about ${formatUnits(needed, 18)}.`);
+  }
 
-  const hashes: string[] = [];
+  const calls: { to: Address; data: Hex; value: bigint; gas?: bigint }[] = [];
   if (!native && q.estimate.approvalAddress) {
     const spender = q.estimate.approvalAddress as Address;
-    const allowance = await reader.readContract({ address: args.token as Address, abi: erc20Abi, functionName: "allowance", args: [account.address, spender] });
-    if (allowance < amount) {
-      const approve = await signer.writeContract({ address: args.token as Address, abi: erc20Abi, functionName: "approve", args: [spender, amount] });
-      const r = await reader.waitForTransactionReceipt({ hash: approve, timeout: 120_000 });
-      if (r.status !== "success") throw new Error(`The approval ${approve} reverted.`);
-      hashes.push(approve);
-    }
+    const allowance = await reader.readContract({ address: args.token as Address, abi: erc20Abi, functionName: "allowance", args: [sender.address, spender] });
+    if (allowance < amount) calls.push({ to: args.token as Address, data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [spender, amount] }), value: 0n });
   }
-  const hash = await signer.sendTransaction({ to: tx.to, data: tx.data, value: BigInt(tx.value ?? 0), gas: tx.gasLimit ? BigInt(tx.gasLimit) : undefined });
-  const receipt = await reader.waitForTransactionReceipt({ hash, timeout: 180_000 });
-  if (receipt.status !== "success") throw new Error(`The route transaction ${hash} reverted.`);
-  hashes.push(hash);
+  calls.push({ to: tx.to, data: tx.data, value: BigInt(tx.value ?? 0), gas: tx.gasLimit ? BigInt(tx.gasLimit) : undefined });
+  const hash = await sender.send(args.chainId, calls);
   const explorer = chain.blockExplorers?.default.url;
-  return { hash, hashes, explorer: explorer ? `${explorer}/tx/${hash}` : null, tool: q.tool, expectedOusd: Number(formatUnits(BigInt(q.estimate.toAmount), 6)), etaSeconds: q.estimate.executionDuration ?? null, status: `https://scan.li.fi/tx/${hash}` };
+  return { hash, transactions: calls.length, explorer: explorer ? `${explorer}/tx/${hash}` : null, tool: q.tool, expectedOusd: Number(formatUnits(BigInt(q.estimate.toAmount), 6)), etaSeconds: q.estimate.executionDuration ?? null, status: `https://scan.li.fi/tx/${hash}` };
 }
 
 /** Chains and tokens offered in the deposit window. LI.FI resolves each symbol to its address. */

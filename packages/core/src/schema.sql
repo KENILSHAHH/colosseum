@@ -141,3 +141,15 @@ create table if not exists agent_wallets (
   max_action_usd numeric not null default 250,    -- hard limit per action
   created_at     timestamptz not null default now()
 );
+
+-- One row per transaction that the gas sponsor sent for a user (EIP-7702).
+create table if not exists sponsored_txs (
+  id           bigserial primary key,
+  user_id      text not null references users(id),
+  chain        text not null,
+  hash         text not null,
+  gas_cost_wei text not null,
+  success      boolean not null,
+  created_at   timestamptz not null default now()
+);
+create index if not exists sponsored_txs_user on sponsored_txs(user_id, created_at desc);

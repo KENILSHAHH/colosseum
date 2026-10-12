@@ -1,7 +1,7 @@
 // The deposit converter. The Privy wallet of a user is the deposit address.
 // A loop looks at each deposit wallet. It converts every token that arrived to OUSD on Tempo through LI.FI (jumper.xyz routes).
 // The OUSD goes to the agent wallet of the user, where it pays for prompts and funds actions.
-import { convertToOusd, NeedsGasError, NothingToConvertError, walletAssets, type WalletAsset } from "./adapters/lifi";
+import { accountSender, convertToOusd, NeedsGasError, NothingToConvertError, walletAssets, type WalletAsset } from "./adapters/lifi";
 import { config } from "./config";
 import { sql } from "./db";
 import { depositAccount } from "./privy";
@@ -25,7 +25,7 @@ async function sweepUser(u: UserRow) {
   const assets = await walletAssets(u.deposit_wallet, config().DEPOSIT_MIN_USD);
   if (assets.length === 0) return;
   const to = (await getOrCreateWallet(u.id)).address;
-  const account = depositAccount({ address: u.deposit_wallet, walletId: u.privy_wallet_id });
+  const account = accountSender(depositAccount({ address: u.deposit_wallet, walletId: u.privy_wallet_id }));
   for (const a of assets) {
     if (await recentlyTried(u.id, a)) continue;
     try {

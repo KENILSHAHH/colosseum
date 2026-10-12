@@ -15,6 +15,7 @@ import * as delegation from "../delegation";
 import { executeIntent } from "../executors/index";
 import { createIntent, transition, type Intent, type IntentKind } from "../intents";
 import { getPositions } from "../positions";
+import { SPONSORED_CHAINS, sponsorEnabled } from "../sponsor";
 import { CHAIN_KEYS, CHAINS } from "../registry/chains";
 import type { AgentWallet } from "../wallet";
 
@@ -78,7 +79,7 @@ export function buildTools(ctx: ToolContext) {
   const tools = [
     // ── Read ────────────────────────────────────────────────────────────────
     tool("wallet_overview", "The user's agent wallet: address, native and USDC balances on Ethereum, Arbitrum and Base, Hyperliquid balances and positions, Aave accounts, active guards. Call it before any action to know what funds exist and where.",
-      {}, run(() => getPositions(ctx.userId, address)), read),
+      {}, run(async () => ({ ...(await getPositions(ctx.userId, address)), gasSponsor: sponsorEnabled() ? { on: true, chains: SPONSORED_CHAINS, note: "The wallet needs no native gas on these chains." } : { on: false } })), read),
 
     tool("rates_compare", "Compare live supply (lending) rates for one asset across Ethereum, Arbitrum, Base, Solana, HyperEVM, Tempo and Robinhood Chain. Returns rows with APY, TVL and a source link per row.",
       { asset: z.string().describe("Token symbol, for example USDC"), chains: z.array(z.string()).optional().describe("Chain name filter"), minTvlUsd: z.number().optional() },

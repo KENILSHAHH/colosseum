@@ -6,7 +6,7 @@ import { z } from "zod";
 import { Receipt } from "mppx";
 import {
   checkBudget, config, ensureUser, executeIntent, getDepositWallet, getIntent, getOrCreateWallet, getPositions, isExpired, listDeposits, listIntents,
-  migrate, privyEnabled, startDepositSweeper, syncDepositWallet, walletAccount, privySignIn, promptPriceUsd, recordCharge, runChatAgent, signToken, sql, startLlmProxy, transition, updateWalletSettings, verifyToken, withdrawToOwner, type AgentEvent,
+  migrate, privyEnabled, sponsorAddress, startDepositSweeper, syncDepositWallet, walletSender, privySignIn, promptPriceUsd, recordCharge, runChatAgent, signToken, sql, startLlmProxy, transition, updateWalletSettings, verifyToken, withdrawToOwner, type AgentEvent,
 } from "@app/core";
 import { delegation, lifi } from "@app/core";
 import { cancelGuard, listGuards } from "@app/core/guards";
@@ -16,7 +16,7 @@ type Env = { Variables: { userId: string } };
 const app = new Hono<Env>();
 app.use("*", cors({ origin: (o) => o ?? "*", credentials: true, exposeHeaders: ["WWW-Authenticate", "Payment-Receipt"] }));
 
-app.get("/health", (c) => c.json({ ok: true, mpp: mppEnabled(), privy: privyEnabled(), model: config().CLAUDE_MODEL }));
+app.get("/health", (c) => c.json({ ok: true, mpp: mppEnabled(), privy: privyEnabled(), gasSponsor: sponsorAddress(), model: config().CLAUDE_MODEL }));
 
 // ── Sign-in through Privy ───────────────────────────────────────────────────
 // The browser sends its Privy access token. The server returns the session token of this app.
@@ -133,7 +133,7 @@ function topUpPromptCredit(userId: string, address: string, price: number): Prom
     const assets = await lifi.walletAssets(address, PROMPT_TOP_UP_USD * 1.2).catch(() => []);
     const stable = (s: string) => /^(USDC|USDT|DAI|USDC\.e|USDbC)$/i.test(s);
     assets.sort((x, y) => Number(stable(y.symbol)) - Number(stable(x.symbol)) || (y.usd ?? 0) - (x.usd ?? 0));
-    const account = await walletAccount(userId);
+    const account = await walletSender(userId);
     for (const a of assets) {
       try {
         const r = await lifi.convertToOusd(account, { chainId: a.chainId, token: a.token, toAddress: address, maxUsd: PROMPT_TOP_UP_USD });
@@ -289,7 +289,7 @@ app.get("/billing/assets", async (c) => c.json(await lifi.walletAssets((await ge
 app.post("/billing/topup", async (c) => {
   const body = z.object({ chainId: z.number().int().positive(), token: z.string().regex(/^0x[0-9a-fA-F]{40}$/) }).parse(await c.req.json());
   const userId = c.get("userId");
-  return c.json(await lifi.convertToOusd(await walletAccount(userId), { ...body, toAddress: (await getOrCreateWallet(userId)).address }));
+  return c.json(await lifi.convertToOusd(await walletSender(userId), { ...body, toAddress: (await getOrCreateWallet(userId)).address }));
 });
 
 // ── Deposits ───────────────────────────────────────────────────────────────

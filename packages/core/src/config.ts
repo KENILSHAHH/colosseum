@@ -13,6 +13,9 @@ const Env = z.object({
   // Server signer for the Privy wallet of a user (key quorum id and its P-256 private key). The deposit converter uses it.
   PRIVY_SIGNER_ID: z.string().optional(),
   PRIVY_AUTHORIZATION_KEY: z.string().optional(),
+  // Gas sponsor (EIP-7702). One key, the same address on every EVM chain. It sends the transactions of the users and pays the gas.
+  SPONSOR_PRIVATE_KEY: z.string().optional(),
+  SPONSOR_DAILY_TXS: z.coerce.number().default(40),
   // The deposit converter: how often it looks, and the smallest value it converts.
   DEPOSIT_SWEEP_SECONDS: z.coerce.number().default(60),
   DEPOSIT_MIN_USD: z.coerce.number().default(1),

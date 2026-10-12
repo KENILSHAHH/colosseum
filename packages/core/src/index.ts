@@ -19,3 +19,5 @@ export * as evm from "./adapters/evm";
 export * from "./wallet";
 export * from "./positions";
 export { executeIntent } from "./executors/index";
+export { walletSender, withdrawToOwner } from "./executors/evm";
+export * from "./sponsor";
