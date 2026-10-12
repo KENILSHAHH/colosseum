@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowUp, ChevronRight, Square, Wrench } from "lucide-react";
+import { ArrowUp, ChevronRight, Mic, Square, Wrench } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -84,10 +84,21 @@ export default function Page() {
   const abort = useRef<AbortController | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const [hintIndex, setHintIndex] = useState(0);
+  const [voiceOk, setVoiceOk] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [voiceError, setVoiceError] = useState("");
+  const recognition = useRef<any>(null);
+  const voiceLang = useRef<string | null>(null);
 
   useEffect(() => {
     const t = setInterval(() => setHintIndex((i) => (i + 1) % SUGGESTIONS.length), 2000);
     return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    const w = window as any;
+    setVoiceOk(Boolean(w.SpeechRecognition || w.webkitSpeechRecognition));
+    return () => recognition.current?.abort();
   }, []);
 
   useEffect(() => {
@@ -102,6 +113,8 @@ export default function Page() {
     async (text: string) => {
       const prompt = text.trim();
       if (!prompt || busy || !session.signedIn) return;
+      recognition.current?.abort();
+      setListening(false);
       setInput("");
       setBusy(true);
       setMessages((m) => [...m, { role: "user", parts: [{ kind: "text", text: prompt }] }, { role: "assistant", parts: [] }]);
@@ -141,6 +154,51 @@ export default function Page() {
     [busy, session.signedIn, patchLast, qc],
   );
 
+  const toggleVoice = () => {
+    if (listening) {
+      recognition.current?.stop();
+      return;
+    }
+    const w = window as any;
+    const Recognition = w.SpeechRecognition || w.webkitSpeechRecognition;
+    if (!Recognition) return;
+    const base = input.trim();
+    const rec = new Recognition();
+    rec.lang = voiceLang.current ?? (navigator.language || "en-US");
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.onresult = (e: any) => {
+      let spoken = "";
+      for (let i = 0; i < e.results.length; i++) spoken += e.results[i][0].transcript;
+      setInput(base ? `${base} ${spoken.trim()}` : spoken.trim());
+    };
+    rec.onerror = (e: any) => {
+      // "aborted" comes from our own stop (a sent message, a second click). "no-speech" is silence. Neither is a failure.
+      if (e.error === "aborted" || e.error === "no-speech") return;
+      const messages: Record<string, string> = {
+        "not-allowed": "Microphone access is blocked. Allow it in the browser settings.",
+        "service-not-allowed": "Microphone access is blocked. Allow it in the browser settings.",
+        "audio-capture": "No microphone was found. Connect one and try again.",
+        // Chrome sends the audio to its speech service. Brave and some other browsers have no such service.
+        network: "The speech service of this browser did not answer. Use Chrome, Edge or Safari, and check the connection.",
+        "language-not-supported": "The speech service does not support your browser language. Voice input now uses English.",
+      };
+      // The next attempt uses English when the browser language has no speech support.
+      if (e.error === "language-not-supported") voiceLang.current = "en-US";
+      setVoiceError(messages[e.error] ?? `Voice input failed (${e.error || "unknown error"}). Try again.`);
+    };
+    rec.onend = () => setListening(false);
+    recognition.current = rec;
+    setVoiceError("");
+    try {
+      rec.start();
+      setListening(true);
+    } catch {
+      // start() throws when an earlier session is still closing. One more click starts a new one.
+      setVoiceError("Voice input is not ready yet. Click the microphone again.");
+    }
+  };
+
   const newChat = () => {
     abort.current?.abort();
     sessionId.current = null;
@@ -149,8 +207,9 @@ export default function Page() {
 
   const empty = messages.length === 0;
 
-  const hint = session.signedIn ? SUGGESTIONS[hintIndex] : "Sign in to chat";
+  const hint = !session.signedIn ? "Sign in to chat" : listening ? "Listening…" : SUGGESTIONS[hintIndex];
   const composer = (
+    <>
     <form
       onSubmit={(e) => {
         e.preventDefault();
@@ -177,6 +236,18 @@ export default function Page() {
           <span className="pointer-events-none absolute inset-0 flex items-center truncate text-[15px] text-faint">{hint}</span>
         )}
       </div>
+      {voiceOk && (
+        <button
+          type="button"
+          onClick={toggleVoice}
+          disabled={!session.signedIn || busy}
+          aria-pressed={listening}
+          className={`grid size-9 place-items-center rounded-xl disabled:opacity-30 ${listening ? "dot bg-accent text-black" : "bg-raised text-dim hover:text-ink"}`}
+          title={listening ? "Stop listening" : "Speak your request"}
+        >
+          <Mic className="size-4" />
+        </button>
+      )}
       {busy ? (
         <button type="button" onClick={() => abort.current?.abort()} className="grid size-9 place-items-center rounded-xl bg-raised text-ink" title="Stop">
           <Square className="size-3.5 fill-current" />
@@ -187,6 +258,8 @@ export default function Page() {
         </button>
       )}
     </form>
+    {voiceError && <p className="mt-2 px-1 text-[12.5px] text-bad">{voiceError}</p>}
+    </>
   );
 
   return (
@@ -206,7 +279,7 @@ export default function Page() {
           <div className={`mx-auto w-full max-w-[760px] px-6 py-8 ${empty ? "flex min-h-full flex-col justify-center" : ""}`}>
             {empty && (
               <div>
-                <h1 className="mb-6 text-center text-[28px] font-semibold tracking-tight">What do you want to do on-chain?</h1>
+                <h1 className="mb-6 text-center text-[36px] font-bold leading-tight tracking-tight">What do you want to do on-chain?</h1>
                 {composer}
                 {!session.signedIn && <p className="mt-5 text-center text-[13px] text-faint">Connect a wallet and sign in to start.</p>}
               </div>
