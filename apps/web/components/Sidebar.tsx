@@ -1,32 +1,53 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, Check, Link2, Loader2, LogOut, Plus, ShieldCheck, UserRound, Wallet } from "lucide-react";
-import { useState } from "react";
+import { CalendarClock, Check, Link2, Loader2, LogIn, LogOut, Menu, Plus, ShieldCheck, UserRound, Wallet } from "lucide-react";
+import { useEffect, useState } from "react";
 import { api, short, usd, type Me, type Permission } from "@/lib/api";
 import { useLinkedWallet } from "@/lib/linkedWallet";
 import { DepositPanel } from "./DepositPanel";
-import { MenuItem } from "./MenuItem";
+import { MenuContext, MenuItem } from "./MenuItem";
 import type { useSession } from "@/lib/session";
 
 interface Guard { id: string; venue: string; params: Record<string, any>; status: string; lastValue: number | null; lastCheck: string | null }
 
 export function Sidebar({ session, onNewChat }: { session: ReturnType<typeof useSession>; onNewChat: () => void }) {
   const { me, signedIn } = session;
+  const [collapsed, setCollapsed] = useState(false);
+  // The choice stays after a reload. It is read after the first render, so the server and the browser draw the same page.
+  useEffect(() => setCollapsed(localStorage.getItem("menu-collapsed") === "1"), []);
+  const set = (value: boolean) => {
+    setCollapsed(value);
+    localStorage.setItem("menu-collapsed", value ? "1" : "0");
+  };
 
   return (
-    <aside className="flex h-full w-[272px] shrink-0 flex-col border-r border-line bg-panel/60 backdrop-blur-xl">
-      <div className="flex items-center gap-2 px-4 pt-4 pb-3">
-        <div className="grid size-7 place-items-center rounded-lg bg-accent text-sm font-semibold text-black">◆</div>
-        <div className="text-[15px] font-semibold tracking-tight">DeFi Agent</div>
+    <MenuContext.Provider value={{ collapsed, expand: () => set(false) }}>
+    <aside className={`flex h-full shrink-0 flex-col border-r border-line bg-panel/60 backdrop-blur-xl transition-[width] duration-200 ${collapsed ? "w-[64px]" : "w-[272px]"}`}>
+      <div className={`flex items-center gap-2 px-3 pt-4 pb-3 ${collapsed ? "justify-center" : ""}`}>
+        <button onClick={() => set(!collapsed)} title={collapsed ? "Open the menu" : "Close the menu"} aria-label={collapsed ? "Open the menu" : "Close the menu"} aria-expanded={!collapsed} className="grid size-9 shrink-0 place-items-center rounded-lg text-dim hover:bg-raised hover:text-ink">
+          <Menu className="size-5" />
+        </button>
+        {!collapsed && (
+          <>
+            <div className="grid size-7 place-items-center rounded-lg bg-accent text-sm font-semibold text-black">◆</div>
+            <div className="text-[15px] font-semibold tracking-tight">DeFi Agent</div>
+          </>
+        )}
       </div>
 
-      <button onClick={onNewChat} className="mx-3 mb-3 flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm text-dim hover:bg-raised hover:text-ink">
-        <Plus className="size-4" /> New chat
+      <button onClick={onNewChat} title="New chat" aria-label="New chat" className={collapsed ? "mx-auto mb-3 grid size-10 place-items-center rounded-lg border border-line text-dim hover:bg-raised hover:text-ink" : "mx-3 mb-3 flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm text-dim hover:bg-raised hover:text-ink"}>
+        <Plus className="size-4" /> {!collapsed && "New chat"}
       </button>
 
-      <div className="flex-1 space-y-1 overflow-y-auto px-3 pb-4">
-        {!session.authenticated && (
+      <div className={`flex-1 space-y-1 overflow-y-auto pb-4 ${collapsed ? "px-2" : "px-3"}`}>
+        {collapsed && !signedIn && (
+          <button onClick={() => (session.authenticated ? set(false) : session.signIn())} title="Sign in" aria-label="Sign in" className="mx-auto grid size-10 place-items-center rounded-lg bg-accent text-black hover:brightness-110">
+            {session.authenticated ? <Loader2 className="size-4 animate-spin" /> : <LogIn className="size-4" />}
+          </button>
+        )}
+
+        {!collapsed && !session.authenticated && (
           <Section title="Account">
             <button disabled={!session.ready} onClick={session.signIn} className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-black hover:brightness-110 disabled:opacity-60">
               Sign in or sign up
@@ -34,7 +55,7 @@ export function Sidebar({ session, onNewChat }: { session: ReturnType<typeof use
           </Section>
         )}
 
-        {session.authenticated && !signedIn && (
+        {!collapsed && session.authenticated && !signedIn && (
           <Section title="Account">
             {session.error ? (
               <>
@@ -56,15 +77,21 @@ export function Sidebar({ session, onNewChat }: { session: ReturnType<typeof use
 
         {signedIn && me && (
           <>
-            <div className="flex items-center gap-3 px-2.5 py-2">
-              <span className="grid size-7 shrink-0 place-items-center rounded-md bg-raised text-dim">
-                <UserRound className="size-4" />
-              </span>
-              <span className="min-w-0 flex-1 truncate text-[13px] text-dim">{session.label ?? "Signed in"}</span>
-              <button onClick={session.signOut} title="Sign out" className="text-faint hover:text-ink">
-                <LogOut className="size-3.5" />
+            {collapsed ? (
+              <button onClick={() => set(false)} title={session.label ?? "Signed in"} aria-label="Account" className="mx-auto grid size-10 place-items-center rounded-lg text-dim hover:bg-raised hover:text-ink">
+                <UserRound className="size-[18px]" />
               </button>
-            </div>
+            ) : (
+              <div className="flex items-center gap-3 px-2.5 py-2">
+                <span className="grid size-7 shrink-0 place-items-center rounded-md bg-raised text-dim">
+                  <UserRound className="size-4" />
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[13px] text-dim">{session.label ?? "Signed in"}</span>
+                <button onClick={session.signOut} title="Sign out" className="text-faint hover:text-ink">
+                  <LogOut className="size-3.5" />
+                </button>
+              </div>
+            )}
             <Balances />
             <DepositPanel me={me} />
             <LinkedWallet me={me} />
@@ -75,6 +102,7 @@ export function Sidebar({ session, onNewChat }: { session: ReturnType<typeof use
       </div>
 
     </aside>
+    </MenuContext.Provider>
   );
 }
 

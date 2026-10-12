@@ -1,7 +1,10 @@
 "use client";
 
 import { ChevronRight, type LucideIcon } from "lucide-react";
-import { useState } from "react";
+import { createContext, useContext, useState } from "react";
+
+/** Set by the side menu. In the narrow form only the icons show, and a click on one opens the menu. */
+export const MenuContext = createContext<{ collapsed: boolean; expand: () => void }>({ collapsed: false, expand: () => {} });
 
 /** One row of the side menu: an icon, a label and a short value. A click opens the details under it. */
 export function MenuItem({ icon: Icon, label, value, badge, defaultOpen = false, children }: {
@@ -15,6 +18,19 @@ export function MenuItem({ icon: Icon, label, value, badge, defaultOpen = false,
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const { collapsed, expand } = useContext(MenuContext);
+  if (collapsed)
+    return (
+      <button
+        onClick={() => { setOpen(true); expand(); }}
+        title={value !== undefined ? `${label}: ${value}` : label}
+        aria-label={label}
+        className="relative mx-auto grid size-10 place-items-center rounded-lg text-dim hover:bg-raised hover:text-ink"
+      >
+        <Icon className="size-[18px]" />
+        {badge ? <span className="absolute right-1 top-1 size-2 rounded-full bg-accent" /> : null}
+      </button>
+    );
   return (
     <section>
       <button
