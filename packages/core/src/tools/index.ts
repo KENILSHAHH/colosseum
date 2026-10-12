@@ -2,6 +2,7 @@
 // Read tools return data. Action tools build a preview, check limits, and execute from the user's agent wallet
 // (or wait for a confirmation click when the user turned automatic execution off).
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
+import { encodeFunctionData, erc20Abi, parseUnits } from "viem";
 import { z } from "zod";
 import * as aave from "../adapters/aave";
 import * as aaveV4 from "../adapters/aaveV4";
@@ -16,7 +17,7 @@ import { executeIntent } from "../executors/index";
 import { createIntent, transition, type Intent, type IntentKind } from "../intents";
 import { getPositions } from "../positions";
 import { SPONSORED_CHAINS, sponsorEnabled } from "../sponsor";
-import { CHAIN_KEYS, CHAINS } from "../registry/chains";
+import { CHAIN_KEYS, CHAINS, USDC } from "../registry/chains";
 import type { AgentWallet } from "../wallet";
 
 export interface ToolContext {
@@ -255,7 +256,24 @@ export function buildTools(ctx: ToolContext) {
         return act("aave_supply_borrow", a, { venue: "Aave v3", ...p }, p.collateral.valueUsd);
       })),
 
-    tool("bridge", "Move tokens between chains through Relay, from the agent wallet to the agent wallet (same address) on the destination. Supports Ethereum, Arbitrum, Base, Hyperliquid (HyperCore), HyperEVM, Tempo and Robinhood Chain.",
+    tool("hl_deposit", "Deposit USDC from Arbitrum into the Hyperliquid account of the wallet through the official Hyperliquid bridge. No fee. It arrives in less than a minute and it creates the account. This is the cheap way into Hyperliquid: when the USDC is on another chain, first move it to Arbitrum with `bridge` (about 0.03 USD), then call this. The minimum is 5 USDC. Confirm with hl_account.",
+      { amountUsdc: z.number().min(hl.HL_MIN_DEPOSIT_USDC).describe("USDC on Arbitrum to deposit. At least 5.") },
+      run(async (a) => {
+        const usdc = USDC.arbitrum!;
+        const amount = parseUnits(a.amountUsdc.toFixed(usdc.decimals), usdc.decimals);
+        const held = await evm.evmClient("arbitrum").readContract({ address: usdc.address as `0x${string}`, abi: erc20Abi, functionName: "balanceOf", args: [address] });
+        if (held < amount) throw new Error(`The wallet holds ${Number(held) / 1e6} USDC on Arbitrum. Move USDC to Arbitrum first with the bridge tool.`);
+        const txs: evm.EvmTx[] = [{ to: usdc.address as `0x${string}`, data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [hl.HL_BRIDGE_ARBITRUM, amount] }), value: "0", description: `Deposit ${a.amountUsdc} USDC to Hyperliquid through the official bridge` }];
+        const simulation = await evm.simulate("arbitrum", address, txs);
+        if (simulation.results[0]?.status === "revert") throw new Error(`Simulation: the deposit reverts (${simulation.results[0].error}). Nothing was sent.`);
+        return act("evm_transactions", { chain: "arbitrum", transactions: txs }, {
+          venue: "Hyperliquid bridge", chain: CHAINS.arbitrum.name, summary: `Deposit ${a.amountUsdc} USDC to Hyperliquid. No fee. It arrives in less than a minute.`,
+          sources: ["https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/bridge2"], simulation,
+          transactions: txs.map((t) => ({ ...t, chainId: CHAINS.arbitrum.chainId })),
+        }, a.amountUsdc);
+      })),
+
+    tool("bridge", "Move tokens between chains through Relay, from the agent wallet to the agent wallet (same address) on the destination. Supports Ethereum, Arbitrum, Base, Hyperliquid (HyperCore), HyperEVM, Tempo and Robinhood Chain. Do not use it with Hyperliquid as the destination for a new account: Relay then takes a fixed fee of about 1.2 USDC. Bridge to Arbitrum and call hl_deposit.",
       { fromChain: z.enum(EVM_CHAINS), toChain: z.enum(CHAIN_KEYS), fromToken: z.string(), toToken: z.string(), amount: z.number().positive() },
       run(async (a) => {
         if (a.toChain === "solana") throw new Error("The agent wallet has no Solana address yet. Bridging to Solana is not supported.");
@@ -325,7 +343,7 @@ export function buildTools(ctx: ToolContext) {
 
 export const TOOL_NAMES = [
   "wallet_overview", "rates_compare", "hl_markets", "hl_account", "hl_outcomes", "sol_quote", "bridge_quote", "bridge_status", "aave_account", "aave_v4_markets", "aave_v4_account", "evm_simulate",
-  "hl_open_position", "hl_close_position", "aave_supply_borrow", "bridge", "evm_send_transactions", "guard_register_aave", "aave_v4_action",
+  "hl_open_position", "hl_close_position", "aave_supply_borrow", "bridge", "evm_send_transactions", "guard_register_aave", "aave_v4_action", "hl_deposit",
   "linked_wallet_overview", "linked_wallet_request_permission", "linked_wallet_send_transactions",
 ];
 export const allToolNames = () => TOOL_NAMES.map((t) => `mcp__${SERVER_NAME}__${t}`);

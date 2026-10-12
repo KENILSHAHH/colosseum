@@ -275,3 +275,11 @@ export async function listOutcomes(query?: string, limit = 25) {
       venue: o.venue,
     }));
 }
+
+/**
+ * The official Hyperliquid bridge on Arbitrum (Bridge2). Source: https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/bridge2
+ * A plain USDC transfer to it credits the sender on Hyperliquid in less than a minute, with no fee, and creates the account.
+ * A deposit below 5 USDC is lost forever.
+ */
+export const HL_BRIDGE_ARBITRUM = "0x2Df1c51E09aECF9cacB7bc98cB1742757f163dF7" as const;
+export const HL_MIN_DEPOSIT_USDC = 5;

@@ -95,5 +95,7 @@ The agent wallet is the Hyperliquid account. It signs orders with its own key. A
 
 ## Funding the account
 
-- Relay (`api.relay.link`) lists `hyperliquid` as chain id `1337`. It can deposit from Base, Arbitrum, Ethereum, Solana and Tempo.
+- Cheapest deposit: the official bridge on Arbitrum (Bridge2, `0x2Df1c51E09aECF9cacB7bc98cB1742757f163dF7`, docs page `for-developers/api/bridge2`). A plain USDC transfer to it credits the sender in less than a minute. No fee. It creates the account. Minimum 5 USDC: a smaller deposit is lost forever. Tool: `hl_deposit`.
+- USDC on another chain: `bridge` it to Arbitrum first (about 0.03 USD from Base), then `hl_deposit`. Verified on 2026-10-12: 10.11 USDC from Base gives 10.08 USDC on Arbitrum.
+- Relay (`api.relay.link`) lists `hyperliquid` as chain id `1337`. It can deposit from Base, Arbitrum, Ethereum, Solana and Tempo. For an address with no Hyperliquid account it takes a fixed fee of about 1.2 USDC (the account activation). On 10 USDC that is 12%. Use it only for an account that exists, and compare the quote first.
 - `withdraw3` costs about 1 USDC and takes about 5 minutes. Main wallet only.
