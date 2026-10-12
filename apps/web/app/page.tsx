@@ -86,7 +86,7 @@ export default function Page() {
   const [hintIndex, setHintIndex] = useState(0);
 
   useEffect(() => {
-    const t = setInterval(() => setHintIndex((i) => (i + 1) % SUGGESTIONS.length), 1000);
+    const t = setInterval(() => setHintIndex((i) => (i + 1) % SUGGESTIONS.length), 2000);
     return () => clearInterval(t);
   }, []);
 
