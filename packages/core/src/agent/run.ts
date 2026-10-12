@@ -62,6 +62,24 @@ function terminalAllowedDomains(): string[] {
 /** Tool folders inside a home directory that the terminal must still read: Foundry and Node. */
 const TOOLCHAIN_DIRS = [path.join(process.env.HOME ?? "/home/defi", ".foundry"), path.join(process.env.HOME ?? "/home/defi", ".nvm"), path.join(process.env.HOME ?? "/home/defi", ".svm")];
 
+/**
+ * Official documentation MCP servers of the supported apps. They only search and read docs.
+ * Each also has a feedback tool that sends text out; those are blocked. Checked on 2026-10-12.
+ * Aave, Morpho, Kamino and ethereum.org publish no MCP server; the agent reads them with WebFetch and the terminal.
+ */
+const DOCS_MCP: Record<string, { url: string; tools: string[]; blocked: string[] }> = {
+  hyperliquid_docs: { url: "https://hyperliquid.gitbook.io/hyperliquid-docs/~gitbook/mcp", tools: ["searchDocumentation", "getPage"], blocked: ["sendFeedback"] },
+  polymarket_docs: { url: "https://docs.polymarket.com/mcp", tools: ["search_polymarket_documentation", "query_docs_filesystem_polymarket_documentation"], blocked: ["submit_feedback"] },
+  jupiter_docs: { url: "https://docs.jup.ag/mcp", tools: ["search_jupiter_documentation", "query_docs_filesystem_jupiter_documentation"], blocked: ["submit_feedback"] },
+  relay_docs: { url: "https://docs.relay.link/mcp", tools: ["search_relay", "query_docs_filesystem_relay"], blocked: ["submit_feedback"] },
+  lifi_docs: { url: "https://docs.li.fi/mcp", tools: ["search_li_fi", "query_docs_filesystem_li_fi"], blocked: ["submit_feedback"] },
+  base_docs: { url: "https://docs.base.org/mcp", tools: ["search_base_documentation", "query_docs_filesystem_base_documentation"], blocked: ["submit_feedback"] },
+  solana_docs: { url: "https://mcp.solana.com/mcp", tools: ["Solana_Expert__Ask_For_Help", "Solana_Documentation_Search", "list_sections", "get_documentation", "program_autofixer"], blocked: [] },
+};
+const docsServers = Object.fromEntries(Object.entries(DOCS_MCP).map(([name, d]) => [name, { type: "http" as const, url: d.url }]));
+const docsTools = Object.entries(DOCS_MCP).flatMap(([name, d]) => d.tools.map((t) => `mcp__${name}__${t}`));
+const docsBlocked = Object.entries(DOCS_MCP).flatMap(([name, d]) => d.blocked.map((t) => `mcp__${name}__${t}`));
+
 const PRODUCT_SKILLS = ["hyperliquid", "tempo-mpp", "solana-defi", "evm-lending", "bridging", "robinhood-chain"];
 
 const REPO_ROOT = path.resolve(fileURLToPath(new URL("../../../../", import.meta.url)));
@@ -148,13 +166,14 @@ export async function* runChatAgent(args: RunArgs): AsyncGenerator<AgentEvent> {
     cwd,
     abortController: abort,
     resume: args.resume,
-    mcpServers: { [SERVER_NAME]: server },
+    mcpServers: { [SERVER_NAME]: server, ...docsServers },
     // Project skills only. User-level settings of the host machine do not load.
     settingSources: ["project"],
     // Only the product skills. The skills bundled with the runtime stay off.
     skills: PRODUCT_SKILLS,
     tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch", "Skill"],
-    allowedTools: [...allToolNames(), "Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch", "Skill"],
+    allowedTools: [...allToolNames(), "Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch", "Skill", ...docsTools],
+    disallowedTools: docsBlocked,
     // Tools that are not pre-approved are denied. No prompt can appear on a server.
     permissionMode: "dontAsk",
     // Terminal commands run in the OS sandbox: writes stay inside the workspace, and the network is limited to the app APIs and the chain RPCs.
