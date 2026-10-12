@@ -15,6 +15,7 @@ import { config } from "../config";
 import * as delegation from "../delegation";
 import { executeIntent } from "../executors/index";
 import { createIntent, transition, type Intent, type IntentKind } from "../intents";
+import * as jobs from "../jobs";
 import { getPositions } from "../positions";
 import { SPONSORED_CHAINS, sponsorEnabled } from "../sponsor";
 import { CHAIN_KEYS, CHAINS, USDC } from "../registry/chains";
@@ -316,6 +317,45 @@ export function buildTools(ctx: ToolContext) {
         }, a.usdValue);
       })),
 
+    tool("job_schedule", "Schedule an action that the server sends later, when a condition is true. Use it for every request of the kind \"do X when Y\" or \"do X at time T\": unwind or close a position at a price, repay when the health factor is low, buy at a price, act at a time. A loop on the server reads the condition every few seconds, for days, with no chat open. When it is true, the server builds the transactions, simulates them again and sends them. No model decides at that moment, so prepare the action completely now. The action is checked with a simulation before the job is stored. Conditions: price of an asset, Aave v4 or v3 health factor, a time. Actions: fixed transactions, or Aave v4 steps that the Aave API builds when the job fires (use these for repay and withdraw, so the amounts are current). wallet=linked acts from the user's own wallet and needs active permissions for every call.",
+      {
+        name: z.string().min(5).max(80).describe("Short name the user sees, for example: Unwind Aave v4 when ETH is below 2000"),
+        condition: z.discriminatedUnion("type", [
+          z.object({ type: z.literal("price"), asset: z.string().describe("Hyperliquid perp coin used as the price source, for example ETH or BTC"), op: z.enum(["below", "above"]), value: z.number().positive() }),
+          z.object({ type: z.literal("aave_v4_health_factor"), address: z.string().regex(/^0x[0-9a-fA-F]{40}$/), spoke: z.string().optional(), below: z.number().min(1).max(5) }),
+          z.object({ type: z.literal("aave_v3_health_factor"), chain: z.enum(["ethereum", "arbitrum", "base"]), address: z.string().regex(/^0x[0-9a-fA-F]{40}$/), below: z.number().min(1).max(5) }),
+          z.object({ type: z.literal("time"), at: z.string().describe("ISO 8601 time, for example 2026-10-14T09:00:00Z") }),
+        ]),
+        action: z.discriminatedUnion("type", [
+          z.object({ type: z.literal("transactions"), chain: z.enum(EVM_CHAINS), wallet: z.enum(["agent", "linked"]), transactions: z.array(TxShape).min(1).max(12) }),
+          z.object({ type: z.literal("aave_v4"), wallet: z.enum(["agent", "linked"]), steps: z.array(z.object({ action: z.enum(["supply", "borrow", "withdraw", "repay"]), reserveId: z.string().min(8), amount: z.string().regex(/^\d+(\.\d+)?$/), max: z.boolean().optional(), native: z.boolean().optional() })).min(1).max(6) }),
+        ]),
+        days: z.number().int().min(1).max(30).default(14).describe("Days until the job ends when the condition did not become true"),
+        usdValue: z.number().min(0).describe("USD value the action moves or puts at risk"),
+        whatItDoes: z.string().min(20).describe("Plain words for the user: what happens when it fires, step by step, and what can go wrong"),
+        allowRevertNow: z.boolean().optional().describe("Only for an action that cannot pass a simulation before the condition is true. You must have proved it on a fork."),
+        forkTestSummary: z.string().optional().describe("What you tested on a fork and the result. Required with allowRevertNow."),
+      },
+      run(async (a) => {
+        if (a.allowRevertNow && !a.forkTestSummary) throw new Error("allowRevertNow needs forkTestSummary: prove the action on a fork first.");
+        const action = (a.action.type === "transactions" ? { ...a.action, transactions: a.action.transactions.map(toEvmTx) } : a.action) as jobs.JobAction;
+        const condition = a.condition as jobs.JobCondition;
+        const check = await jobs.checkJob(ctx.userId, { condition, action, allowRevertNow: a.allowRevertNow });
+        return act("job_create", { name: a.name, condition, action, days: a.days }, {
+          venue: "Scheduled job", chain: CHAINS[check.chain].name, summary: `${a.name}. Fires when: ${jobs.describeCondition(condition)}. ${a.whatItDoes}`,
+          valueNow: check.valueNow, simulation: check.simulation ?? { note: `Not simulated now. Fork test: ${a.forkTestSummary}` },
+          sources: ["Condition and action are checked by code on the server. No model decides when it fires."],
+          transactions: check.transactions.map((t) => ({ ...t, chainId: CHAINS[check.chain].chainId })),
+          endsInDays: a.days, disclosure: "A job reduces risk. It cannot guarantee a result. A price gap, a slow chain or a failed simulation can stop it.",
+        }, a.usdValue);
+      })),
+
+    tool("job_list", "List the scheduled jobs of the user: name, condition, live value at the last check, status and result.",
+      {}, run(async () => ({ jobs: await jobs.listJobs(ctx.userId, true) })), read),
+
+    tool("job_cancel", "Cancel an active scheduled job by id.",
+      { jobId: z.string() }, run(async ({ jobId }) => ({ cancelled: await jobs.cancelJob(jobId, ctx.userId) }))),
+
     tool("guard_register_aave", "Register a liquidation guard for the agent wallet's Aave position. A watcher checks the health factor every few seconds. When it is below the threshold, the watcher sends `triggerTx` from the agent wallet, exactly as stored. Build and deploy the unwind first (your own flash-loan contract or an Aave adapter call), test it on a fork, and give the transaction that starts it. The trigger transaction is simulated now and must not revert for a reason other than 'position is healthy'.",
       {
         chain: z.enum(["ethereum", "arbitrum", "base"]),
@@ -343,7 +383,7 @@ export function buildTools(ctx: ToolContext) {
 
 export const TOOL_NAMES = [
   "wallet_overview", "rates_compare", "hl_markets", "hl_account", "hl_outcomes", "sol_quote", "bridge_quote", "bridge_status", "aave_account", "aave_v4_markets", "aave_v4_account", "evm_simulate",
-  "hl_open_position", "hl_close_position", "aave_supply_borrow", "bridge", "evm_send_transactions", "guard_register_aave", "aave_v4_action", "hl_deposit",
+  "hl_open_position", "hl_close_position", "aave_supply_borrow", "bridge", "evm_send_transactions", "guard_register_aave", "aave_v4_action", "hl_deposit", "job_schedule", "job_list", "job_cancel",
   "linked_wallet_overview", "linked_wallet_request_permission", "linked_wallet_send_transactions",
 ];
 export const allToolNames = () => TOOL_NAMES.map((t) => `mcp__${SERVER_NAME}__${t}`);

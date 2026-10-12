@@ -9,6 +9,7 @@ export type IntentKind =
   | "hl_open_position"
   | "hl_close_position"
   | "guard_create"
+  | "job_create"
   | "aave_supply_borrow"
   | "bridge"
   | "evm_transactions";

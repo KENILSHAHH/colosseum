@@ -69,6 +69,7 @@ export function Sidebar({ session, onNewChat }: { session: ReturnType<typeof use
             <Balances />
             <DepositPanel me={me} />
             <LinkedWallet me={me} />
+            <Jobs />
             <Guards />
           </>
         )}
@@ -153,6 +154,38 @@ function LinkedWallet({ me }: { me: Me }) {
         </div>
       ))}
       {wallet.error && <p className="mt-2 text-[11.5px] text-bad">{wallet.error}</p>}
+    </Section>
+  );
+}
+
+interface Job { id: string; name: string; conditionText: string; status: string; lastValue: number | null; result: { error?: string } | null }
+
+/** Actions that the server sends by itself when their condition is true. */
+function Jobs() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["jobs"], queryFn: () => api<Job[]>("/jobs"), refetchInterval: 10_000 });
+  if (!data || data.length === 0) return null;
+  const color: Record<string, string> = { active: "text-good", running: "text-warn", done: "text-dim", failed: "text-bad" };
+  return (
+    <Section title="Scheduled jobs">
+      {data.slice(0, 6).map((j) => (
+        <div key={j.id} className="py-1 text-[12.5px]" title={j.result?.error ?? j.name}>
+          <div className="flex items-start justify-between gap-2">
+            <span className="min-w-0">{j.name}</span>
+            {j.status === "active" ? (
+              <button onClick={async () => { await api(`/jobs/${j.id}`, { method: "DELETE" }); qc.invalidateQueries({ queryKey: ["jobs"] }); }} className="shrink-0 text-[11.5px] text-faint hover:text-bad">
+                Cancel
+              </button>
+            ) : (
+              <span className={`shrink-0 text-[11.5px] ${color[j.status] ?? "text-faint"}`}>{j.status}</span>
+            )}
+          </div>
+          <div className="text-[11.5px] text-faint">
+            {j.conditionText}
+            {j.status === "active" && j.lastValue !== null && ` · now ${j.lastValue.toLocaleString("en-US", { maximumFractionDigits: 3 })}`}
+          </div>
+        </div>
+      ))}
     </Section>
   );
 }

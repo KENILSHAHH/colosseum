@@ -7,6 +7,7 @@ import { sql } from "../db";
 import { createGuard, normalizeHlParams, type AaveGuardParams, type HlGuardAction } from "../guards";
 import { transition, type Intent } from "../intents";
 import type { ChainKey } from "../registry/chains";
+import { createJob } from "../jobs";
 import { sendTransactions } from "./evm";
 import { executeOpen, executeReduce } from "./hyperliquid";
 
@@ -39,6 +40,10 @@ async function run(intent: Intent, address: string): Promise<Record<string, unkn
       if (intent.kind === "aave_supply_borrow") extra.account = await aave.getAccount(p.chain, address as `0x${string}`);
       if (intent.kind === "bridge") extra.requestIds = ((intent.preview.steps as { requestId: string | null }[]) ?? []).map((s) => s.requestId).filter(Boolean);
       return { receipts, ...extra };
+    }
+    case "job_create": {
+      const job = await createJob(intent.userId, { name: p.name, condition: p.condition, action: p.action, days: p.days });
+      return { jobId: job.id, status: job.status, fires: job.conditionText, expiresAt: job.expiresAt };
     }
     case "guard_create": {
       const guard = await createGuard(intent.userId, p.venue, p.guard as AaveGuardParams);

@@ -21,3 +21,4 @@ export * from "./positions";
 export { executeIntent } from "./executors/index";
 export { walletSender, withdrawToOwner } from "./executors/evm";
 export * from "./sponsor";
+export * as jobs from "./jobs";

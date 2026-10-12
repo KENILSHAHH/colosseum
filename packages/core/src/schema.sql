@@ -153,3 +153,20 @@ create table if not exists sponsored_txs (
   created_at   timestamptz not null default now()
 );
 create index if not exists sponsored_txs_user on sponsored_txs(user_id, created_at desc);
+
+-- Scheduled jobs: a condition and a prepared action. The server fires the action when the condition is true.
+create table if not exists jobs (
+  id          text primary key,
+  user_id     text not null references users(id),
+  name        text not null,
+  condition   jsonb not null,
+  action      jsonb not null,
+  status      text not null default 'active',   -- active | running | done | failed | cancelled | expired
+  last_value  numeric,
+  last_check  timestamptz,
+  expires_at  timestamptz not null,
+  result      jsonb,
+  created_at  timestamptz not null default now()
+);
+create index if not exists jobs_active on jobs(status) where status = 'active';
+create index if not exists jobs_user on jobs(user_id, created_at desc);

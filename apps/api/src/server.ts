@@ -8,7 +8,7 @@ import {
   checkBudget, config, ensureUser, executeIntent, getDepositWallet, getIntent, getOrCreateWallet, getPositions, isExpired, listDeposits, listIntents,
   migrate, privyEnabled, sponsorAddress, startDepositSweeper, syncDepositWallet, walletSender, privySignIn, promptPriceUsd, recordCharge, runChatAgent, signToken, sql, startLlmProxy, transition, updateWalletSettings, verifyToken, withdrawToOwner, type AgentEvent,
 } from "@app/core";
-import { delegation, lifi } from "@app/core";
+import { delegation, jobs, lifi } from "@app/core";
 import { cancelGuard, listGuards } from "@app/core/guards";
 import { agentWalletFetch, mpp, mppEnabled, mppRecipient, ousdBalance, TEMPO_CHAIN_ID } from "./mpp";
 
@@ -56,7 +56,7 @@ const auth = async (c: Context<Env>, next: () => Promise<void>) => {
   c.set("userId", claims.sub);
   await next();
 };
-for (const p of ["/me", "/wallet", "/wallet/*", "/positions", "/chat", "/intents", "/intents/*", "/guards", "/guards/*", "/billing", "/billing/*", "/permissions", "/permissions/*", "/deposit", "/deposit/*"]) app.use(p, auth);
+for (const p of ["/me", "/wallet", "/wallet/*", "/positions", "/chat", "/intents", "/intents/*", "/guards", "/guards/*", "/billing", "/billing/*", "/permissions", "/permissions/*", "/deposit", "/deposit/*", "/jobs", "/jobs/*"]) app.use(p, auth);
 
 // ── Account and agent wallet ───────────────────────────────────────────────
 app.get("/me", async (c) => {
@@ -260,6 +260,10 @@ app.post("/intents/:id/confirm", async (c) => {
   return c.json(await executeIntent(claimed, (await getOrCreateWallet(userId)).address));
 });
 
+// ── Scheduled jobs ─────────────────────────────────────────────────────────
+app.get("/jobs", async (c) => c.json(await jobs.listJobs(c.get("userId"))));
+app.delete("/jobs/:id", async (c) => c.json({ cancelled: await jobs.cancelJob(c.req.param("id"), c.get("userId")) }));
+
 // ── Guards and billing ─────────────────────────────────────────────────────
 app.get("/guards", async (c) => c.json(await listGuards(c.get("userId"))));
 app.delete("/guards/:id", async (c) => c.json({ cancelled: await cancelGuard(c.req.param("id"), c.get("userId")) }));
@@ -320,5 +324,6 @@ app.onError((err, c) => {
 await migrate();
 startLlmProxy();
 const sweeper = startDepositSweeper();
+jobs.startJobRunner();
 serve({ fetch: app.fetch, port: config().API_PORT });
 console.log(`API on http://localhost:${config().API_PORT}  (MPP ${mppEnabled() ? "on, Tempo mainnet" : "off"}, deposit converter ${sweeper ? "on" : "off"})`);
