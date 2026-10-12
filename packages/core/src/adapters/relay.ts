@@ -59,7 +59,9 @@ export async function quoteBridge(args: {
     amount: BigInt(Math.round(args.amount * 10 ** inCur.decimals)).toString(),
     tradeType: "EXACT_INPUT",
   });
-  const feeUsd = Object.entries(quote.fees ?? {}).reduce((s, [, f]) => s + Number(f.amountUsd ?? 0), 0);
+  // "relayer" is already the sum of "relayerGas" and "relayerService". Adding all entries counts it two times.
+  const fee = (k: string) => Number((quote.fees as Record<string, { amountUsd?: string }> | undefined)?.[k]?.amountUsd ?? 0);
+  const feeUsd = fee("gas") + fee("relayer") + fee("app");
   return {
     provider: "Relay",
     from: { chain: from.name, token: inCur.symbol, address: inCur.address, amount: args.amount },
