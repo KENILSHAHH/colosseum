@@ -11,7 +11,7 @@ import { llmSessionToken } from "../llmProxy";
 import { allToolNames, buildTools, SERVER_NAME, type WalletRequest } from "../tools/index";
 import { getOrCreateWallet } from "../wallet";
 import type { Permission } from "../delegation";
-import { memoryBlock } from "../memory";
+import { memoryBlock, reflectOnChat, type ChatRecord } from "../memory";
 import { CHAT_SYSTEM_PROMPT } from "./prompts";
 
 export type AgentEvent =
@@ -223,6 +223,9 @@ export async function* runChatAgent(args: RunArgs): AsyncGenerator<AgentEvent> {
     while (walletRequests.length) yield { type: "wallet_request", request: walletRequests.shift()! };
   };
 
+  // A short record of the chat, for the review that saves lessons afterwards.
+  const record: ChatRecord = { prompt: args.prompt, reply: "", steps: [], tools: allToolNames().map((t) => t.replace(`mcp__${SERVER_NAME}__`, "")) };
+  const pendingSteps = new Map<string, { tool: string; input: string }>();
   try {
     for await (const msg of query({ prompt: input(), options })) {
       if (msg.type === "system" && msg.subtype === "init") {
@@ -230,15 +233,22 @@ export async function* runChatAgent(args: RunArgs): AsyncGenerator<AgentEvent> {
         yield { type: "session", sessionId, skills: msg.skills ?? [] };
       } else if (msg.type === "stream_event") {
         const ev = msg.event;
-        if (ev.type === "content_block_delta" && ev.delta.type === "text_delta") yield { type: "text", delta: ev.delta.text };
+        if (ev.type === "content_block_delta" && ev.delta.type === "text_delta") {
+          record.reply += ev.delta.text;
+          yield { type: "text", delta: ev.delta.text };
+        }
       } else if (msg.type === "assistant" && msg.parent_tool_use_id === null) {
         for (const block of msg.message.content) {
-          if (block.type === "tool_use") yield { type: "tool", id: block.id, name: block.name.replace(`mcp__${SERVER_NAME}__`, ""), input: block.input };
+          if (block.type !== "tool_use") continue;
+          pendingSteps.set(block.id, { tool: block.name.replace(`mcp__${SERVER_NAME}__`, ""), input: JSON.stringify(block.input) });
+          yield { type: "tool", id: block.id, name: block.name.replace(`mcp__${SERVER_NAME}__`, ""), input: block.input };
         }
       } else if (msg.type === "user" && msg.parent_tool_use_id === null && Array.isArray(msg.message.content)) {
         for (const block of msg.message.content) {
           if (block.type !== "tool_result") continue;
           const text = typeof block.content === "string" ? block.content : (block.content ?? []).map((b) => (b.type === "text" ? b.text : "")).join("");
+          const step = pendingSteps.get(block.tool_use_id);
+          if (step) record.steps.push({ ...step, ok: block.is_error !== true && !text.startsWith("Error:"), result: text.slice(0, 1000) });
           yield { type: "tool_result", id: block.tool_use_id, isError: block.is_error === true, preview: text.slice(0, 2000) };
         }
         yield* flushIntents();
@@ -249,6 +259,11 @@ export async function* runChatAgent(args: RunArgs): AsyncGenerator<AgentEvent> {
         inbox.closed = true;
         inbox.wake?.();
         const billed = await recordUsage({ userId: args.userId, sessionId, modelUsage: msg.modelUsage });
+        // Learn from this chat in the background. The user does not wait for it.
+        void reflectOnChat(args.userId, { ...record, steps: [...record.steps] }).then(
+          (n) => n > 0 && console.log(`memory: saved ${n} lesson(s) from a chat of ${args.userId}`),
+          (err) => console.error("memory: the review failed:", err instanceof Error ? err.message.split("\n")[0] : err),
+        );
         yield { type: "done", costUsd: billed.costUsd, chargedUsd: billed.chargedUsd, turns: msg.num_turns, stopReason: msg.subtype };
       }
     }

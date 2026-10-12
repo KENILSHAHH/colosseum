@@ -386,7 +386,7 @@ export function buildTools(ctx: ToolContext) {
           z.object({ type: z.literal("aave_v3_health_factor"), chain: z.enum(["ethereum", "arbitrum", "base"]), address: z.string().regex(/^0x[0-9a-fA-F]{40}$/), below: z.number().min(1).max(5) }),
           z.object({ type: z.literal("time"), at: z.string().describe("ISO 8601 time, for example 2026-10-14T09:00:00Z") }),
         ]),
-        action: z.discriminatedUnion("type", [
+        action: z.union([
           z.object({ type: z.literal("transactions"), chain: z.enum(EVM_CHAINS), wallet: z.enum(["agent", "linked"]), transactions: z.array(TxShape).min(1).max(40) }),
           z.object({ type: z.literal("aave_v4"), wallet: z.enum(["agent", "linked"]), steps: z.array(z.object({ action: z.enum(["supply", "borrow", "withdraw", "repay"]), reserveId: z.string().min(8), amount: z.string().regex(/^\d+(\.\d+)?$/), max: z.boolean().optional(), native: z.boolean().optional() })).min(1).max(20) }),
           z.object({ type: z.literal("aave_v4_unwind"), wallet: z.enum(["agent", "linked"]), chain: z.enum(["ethereum", "base"]), spoke: z.string().optional() }).describe("Close the whole Aave v4 position with a flash loan through the shared executor. Debt, collateral and swap route are read when it fires. Use this for a scheduled unwind."),
