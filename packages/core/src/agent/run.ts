@@ -116,6 +116,7 @@ export async function* runChatAgent(args: RunArgs): AsyncGenerator<AgentEvent> {
 
   const options: Options = {
     model: c.CLAUDE_MODEL,
+    effort: c.CLAUDE_EFFORT,
     systemPrompt: CHAT_SYSTEM_PROMPT,
     cwd,
     abortController: abort,
