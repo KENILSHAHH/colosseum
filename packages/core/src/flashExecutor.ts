@@ -21,7 +21,7 @@ const CREATE2_DEPLOYER = "0x4e59b44847b379578588920cA78FbF26c0B4956C" as const;
 export const EXECUTOR_CHAINS = ["ethereum", "arbitrum", "base", "robinhood"] as const satisfies readonly ChainKey[];
 export type ExecutorChain = (typeof EXECUTOR_CHAINS)[number];
 /** Morpho Blue. Source: https://docs.morpho.org/get-started/resources/addresses (read on-chain on 2026-10-12: Ethereum and Base). */
-const MORPHO: Partial<Record<ExecutorChain, Address>> = { ethereum: "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb", base: "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb" };
+export const MORPHO: Partial<Record<ExecutorChain, Address>> = { ethereum: "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb", base: "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb" };
 
 const env = (chain: ChainKey) => getSmartAccountsEnvironment(CHAINS[chain].chainId!);
 const argsEnforcer = (chain: ChainKey) => env(chain).caveatEnforcers.ArgsEqualityCheckEnforcer as Address;
@@ -108,6 +108,8 @@ export async function buildFlashRun(userId: string, args: {
   steps: FlashStep[];
   sweep: Address[];
   linkedPermission?: (step: FlashStep) => Promise<{ wallet: Address; permission: Hex }>;
+  /** Who gets what is left at the end. Default: the agent wallet. */
+  recipient?: Address;
 }): Promise<EvmTx> {
   if (!(await isDeployed(args.chain))) throw new Error(`The shared executor is not deployed on ${CHAINS[args.chain].name} yet.`);
   const agent = (await getOrCreateWallet(userId)).address;
@@ -134,7 +136,7 @@ export async function buildFlashRun(userId: string, args: {
   }
   const data = encodeFunctionData({
     abi: EXECUTOR_ABI, functionName: "run",
-    args: [lender, pool, args.token ?? "0x0000000000000000000000000000000000000000", BigInt(args.amount ?? 0), steps, args.sweep, agent],
+    args: [lender, pool, args.token ?? "0x0000000000000000000000000000000000000000", BigInt(args.amount ?? 0), steps, args.sweep, args.recipient ?? agent],
   } as never);
   const summary = args.steps.map((s, i) => `${i + 1}. ${s.from}: ${s.description}`).join(" ");
   return { to: executorAddress(), data, value: "0", description: `Flash run${args.lender === "none" ? "" : ` (${args.lender} flash loan)`}: ${summary}`.slice(0, 400) };

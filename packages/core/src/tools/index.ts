@@ -17,6 +17,7 @@ import { executeIntent } from "../executors/index";
 import { createIntent, transition, type Intent, type IntentKind } from "../intents";
 import * as jobs from "../jobs";
 import * as flash from "../flashExecutor";
+import { buildAaveV4Unwind } from "../unwind";
 import { ensureUpgraded, isSponsored, simulateSponsored } from "../sponsor";
 import { getPositions } from "../positions";
 import { SPONSORED_CHAINS, sponsorEnabled } from "../sponsor";
@@ -363,6 +364,7 @@ export function buildTools(ctx: ToolContext) {
         action: z.discriminatedUnion("type", [
           z.object({ type: z.literal("transactions"), chain: z.enum(EVM_CHAINS), wallet: z.enum(["agent", "linked"]), transactions: z.array(TxShape).min(1).max(40) }),
           z.object({ type: z.literal("aave_v4"), wallet: z.enum(["agent", "linked"]), steps: z.array(z.object({ action: z.enum(["supply", "borrow", "withdraw", "repay"]), reserveId: z.string().min(8), amount: z.string().regex(/^\d+(\.\d+)?$/), max: z.boolean().optional(), native: z.boolean().optional() })).min(1).max(20) }),
+          z.object({ type: z.literal("aave_v4_unwind"), wallet: z.enum(["agent", "linked"]), chain: z.enum(["ethereum", "base"]), spoke: z.string().optional() }).describe("Close the whole Aave v4 position with a flash loan through the shared executor. Debt, collateral and swap route are read when it fires. Use this for a scheduled unwind."),
         ]),
         days: z.number().int().min(1).max(365).default(30).describe("Days until the job ends when the condition did not become true"),
         usdValue: z.number().min(0).describe("USD value the action moves or puts at risk"),
@@ -381,6 +383,18 @@ export function buildTools(ctx: ToolContext) {
           sources: ["Condition and action are checked by code on the server. No model decides when it fires."],
           transactions: check.transactions.map((t) => ({ ...t, chainId: CHAINS[check.chain].chainId })),
           endsInDays: a.days, disclosure: "A job reduces risk. It cannot guarantee a result. A price gap, a slow chain or a failed simulation can stop it.",
+        }, a.usdValue);
+      })),
+
+    tool("aave_v4_unwind", `Close a whole Aave v4 position in one transaction through the shared FlashExecutor (${flash.executorAddress()}): flash-borrow the debt, repay all, withdraw all collateral, sell just enough collateral for the loan, return the rest to the same wallet. Everything is read now (debt, collateral, swap route). wallet=linked needs an active permission with delegate = the executor for: Spoke repay(uint256,uint256,address) and withdraw(uint256,uint256,address), and approve(address,uint256) and transfer(address,uint256) on the debt token and the collateral token. To do it later at a price or health factor, use job_schedule with action type aave_v4_unwind (it is built again when it fires). The agent wallet sends the run; the gas sponsor pays.`,
+      { chain: z.enum(["ethereum", "base"]), wallet: z.enum(["agent", "linked"]), spoke: z.string().optional(), usdValue: z.number().min(0) },
+      run(async (a) => {
+        const { tx, summary } = await buildAaveV4Unwind(ctx.userId, a);
+        const sim = await simulateSponsored(ctx.userId, a.chain, [tx]);
+        if (!sim.ok) throw new Error(`Simulation: the unwind reverts (${sim.error}). Nothing was sent.`);
+        return act("evm_transactions", { chain: a.chain, transactions: [tx] }, {
+          venue: "Aave v4 unwind", chain: CHAINS[a.chain].name, summary, sources: [`Shared executor ${flash.executorAddress()}`, "https://api.aave.com/graphql"],
+          simulation: { method: "sponsored eth_estimateGas", results: [{ index: 0, status: "success", gasUsed: sim.gas }] }, transactions: [{ ...tx, chainId: CHAINS[a.chain].chainId }],
         }, a.usdValue);
       })),
 
@@ -454,7 +468,7 @@ export function buildTools(ctx: ToolContext) {
 
 export const TOOL_NAMES = [
   "wallet_overview", "rates_compare", "hl_markets", "hl_account", "hl_outcomes", "sol_quote", "bridge_quote", "bridge_status", "aave_account", "aave_v4_markets", "aave_v4_account", "evm_simulate",
-  "hl_open_position", "hl_close_position", "aave_supply_borrow", "bridge", "evm_send_transactions", "guard_register_aave", "aave_v4_action", "hl_deposit", "job_schedule", "job_list", "job_cancel", "flash_run",
+  "hl_open_position", "hl_close_position", "aave_supply_borrow", "bridge", "evm_send_transactions", "guard_register_aave", "aave_v4_action", "hl_deposit", "job_schedule", "job_list", "job_cancel", "flash_run", "aave_v4_unwind",
   "linked_wallet_overview", "linked_wallet_ask_to_sign", "linked_wallet_request_permission", "linked_wallet_permission_context", "linked_wallet_send_transactions",
 ];
 export const allToolNames = () => TOOL_NAMES.map((t) => `mcp__${SERVER_NAME}__${t}`);

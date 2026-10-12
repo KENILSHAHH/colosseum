@@ -12,6 +12,8 @@ import { sql } from "./db";
 import { getLinkedWallet, wrapDelegatedTransactions, type DelegationChain } from "./delegation";
 import { sendTransactions } from "./executors/evm";
 import { CHAINS, type ChainKey } from "./registry/chains";
+import { isSponsored, simulateSponsored } from "./sponsor";
+import { buildAaveV4Unwind } from "./unwind";
 import { getOrCreateWallet } from "./wallet";
 
 /** When a job fires. Code evaluates each one from a live source. */
@@ -29,7 +31,9 @@ export type JobAction =
   /** Transactions fixed when the job was made. Good for a call whose calldata does not go stale, such as an unwind contract. */
   | { type: "transactions"; chain: ChainKey; wallet: "agent" | "linked"; transactions: EvmTx[] }
   /** Aave v4 steps. The Aave API builds the transactions when the job fires, so the amounts are current. */
-  | { type: "aave_v4"; wallet: "agent" | "linked"; steps: { action: aaveV4.V4Action; reserveId: string; amount: string; max?: boolean; native?: boolean }[] };
+  | { type: "aave_v4"; wallet: "agent" | "linked"; steps: { action: aaveV4.V4Action; reserveId: string; amount: string; max?: boolean; native?: boolean }[] }
+  /** Close a whole Aave v4 position in one transaction with a flash loan. The debt, the collateral and the swap are read when it fires. */
+  | { type: "aave_v4_unwind"; wallet: "agent" | "linked"; chain: "ethereum" | "base"; spoke?: string };
 
 export type JobStatus = "active" | "running" | "done" | "failed" | "cancelled" | "expired";
 
@@ -87,6 +91,10 @@ export async function buildJobTransactions(userId: string, action: JobAction): P
   if (action.wallet === "linked" && !linked) throw new Error("The user has no linked wallet.");
   let chain: ChainKey;
   let txs: EvmTx[];
+  if (action.type === "aave_v4_unwind") {
+    const { tx } = await buildAaveV4Unwind(userId, action);
+    return { chain: action.chain, from: agent, transactions: [tx] };
+  }
   if (action.type === "transactions") {
     chain = action.chain;
     txs = action.transactions;
@@ -103,7 +111,13 @@ export async function buildJobTransactions(userId: string, action: JobAction): P
   return { chain, from: agent, transactions: txs };
 }
 
-async function simulateOrThrow(chain: ChainKey, from: `0x${string}`, txs: EvmTx[]) {
+async function simulateOrThrow(userId: string, chain: ChainKey, from: `0x${string}`, txs: EvmTx[]) {
+  // On a sponsored chain, simulate the way the sponsor sends it. A plain call can fail where the real transaction succeeds.
+  if (isSponsored(chain)) {
+    const r = await simulateSponsored(userId, chain, txs);
+    if (!r.ok) throw new Error(`Simulation: ${r.error}`);
+    return { method: "sponsored eth_estimateGas", results: txs.map((t, index) => ({ index, description: t.description, status: "success" as const, gasUsed: r.gas, error: null })) };
+  }
   const sim = await evm.simulate(chain, from, txs);
   const bad = sim.results.find((r, i) => r.status === "revert" && (i === 0 || sim.method === "eth_simulateV1"));
   if (bad) throw new Error(`Simulation: transaction ${bad.index + 1} reverts (${bad.error}).`);
@@ -120,7 +134,7 @@ export async function checkJob(userId: string, args: { condition: JobCondition; 
   if (args.condition.type !== "time" && now.value === null) throw new Error("The condition has no live value now. Check the asset name, the address or the spoke.");
   if (now.met) throw new Error(`The condition is true now (value ${now.value ?? "n/a"}). The job would fire at once. Do the action directly, or change the condition.`);
   const built = await buildJobTransactions(userId, args.action);
-  const simulation = args.allowRevertNow ? null : await simulateOrThrow(built.chain, built.from, built.transactions);
+  const simulation = args.allowRevertNow ? null : await simulateOrThrow(userId, built.chain, built.from, built.transactions);
   return { valueNow: now.value, chain: built.chain, transactions: built.transactions, simulation };
 }
 
@@ -151,7 +165,7 @@ async function runJob(r: Row) {
   if (!claimed) return;
   try {
     const built = await buildJobTransactions(r.user_id, r.action);
-    await simulateOrThrow(built.chain, built.from, built.transactions);
+    await simulateOrThrow(r.user_id, built.chain, built.from, built.transactions);
     const sent = await sendTransactions(r.user_id, built.chain, built.transactions);
     await sql()`update jobs set status = 'done', result = ${sql().json({ firedAt: new Date().toISOString(), chain: built.chain, transactions: sent } as never)} where id = ${r.id}`;
     console.log(`job ${r.id} (${r.name}) done for ${r.user_id}: ${sent.map((s) => s.hash).join(", ")}`);
