@@ -23,6 +23,34 @@ export type AgentEvent =
   | { type: "done"; costUsd: number; chargedUsd: number; turns: number; stopReason: string }
   | { type: "error"; message: string };
 
+/**
+ * Hosts the agent terminal can reach from inside the sandbox: the APIs of the supported apps.
+ * Every other host stays blocked, so a script cannot send data to an address of its choice.
+ */
+const TERMINAL_API_HOSTS = [
+  // Lending
+  "api.aave.com", "api.morpho.org", "api.kamino.finance", "yields.llama.fi", "api.llama.fi", "coins.llama.fi",
+  // Hyperliquid
+  "api.hyperliquid.xyz",
+  // Bridges and swaps
+  "api.relay.link", "li.quest", "app.across.to", "lite-api.jup.ag", "quote-api.dflow.net",
+  // Tempo and MPP
+  "mpp.dev", "tempo.xyz",
+];
+
+/** The API hosts plus the RPC host of each chain, so a script and a local fork (anvil) can read the chains. */
+function terminalAllowedDomains(): string[] {
+  const c = config();
+  const rpcs = [c.RPC_ETHEREUM, c.RPC_ARBITRUM, c.RPC_BASE, c.RPC_ROBINHOOD, c.RPC_TEMPO, c.RPC_HYPEREVM, c.RPC_SOLANA].flatMap((url) => {
+    try {
+      return [new URL(url).hostname];
+    } catch {
+      return [];
+    }
+  });
+  return [...new Set([...TERMINAL_API_HOSTS, ...rpcs])];
+}
+
 const PRODUCT_SKILLS = ["hyperliquid", "tempo-mpp", "solana-defi", "evm-lending", "bridging", "robinhood-chain"];
 
 const REPO_ROOT = path.resolve(fileURLToPath(new URL("../../../../", import.meta.url)));
@@ -75,8 +103,8 @@ export async function* runChatAgent(args: RunArgs): AsyncGenerator<AgentEvent> {
     allowedTools: [...allToolNames(), "Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch", "Skill"],
     // Tools that are not pre-approved are denied. No prompt can appear on a server.
     permissionMode: "dontAsk",
-    // Terminal commands run in the OS sandbox: writes stay inside the workspace.
-    sandbox: { enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false },
+    // Terminal commands run in the OS sandbox: writes stay inside the workspace, and the network is limited to the app APIs and the chain RPCs.
+    sandbox: { enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, network: { allowedDomains: terminalAllowedDomains(), allowLocalBinding: true } },
     includePartialMessages: true,
     maxTurns: 40,
     maxBudgetUsd: Math.max(0.5, c.USER_DAILY_LLM_BUDGET_USD / 2),
