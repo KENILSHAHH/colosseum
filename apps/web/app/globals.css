@@ -1,41 +1,5 @@
 @import "tailwindcss";
 
-@font-face {
-  font-family: "Coinbase Sans";
-  src: url("/fonts/Coinbase_Sans-Regular-web-1.32.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Coinbase Sans";
-  src: url("/fonts/Coinbase_Sans-Medium-web-1.32.woff2") format("woff2");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Coinbase Sans";
-  src: url("/fonts/Coinbase_Sans-Bold-web-1.32.woff2") format("woff2");
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Coinbase Mono";
-  src: url("/fonts/Coinbase_Mono-Regular-web.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Coinbase Mono";
-  src: url("/fonts/Coinbase_Mono-Medium-web.woff2") format("woff2");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-
 @theme {
   --color-bg: #070912;
   --color-panel: #10131d;
@@ -49,8 +13,8 @@
   --color-good: #4cc38a;
   --color-warn: #e5b454;
   --color-bad: #ef6f6c;
-  --font-sans: "Coinbase Sans", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "Coinbase Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 html,
@@ -62,65 +26,34 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Northern lights. Tall curtains of light sweep across, sway and pulse behind the app. */
+/* Soft rainbow glow. Seven wide, blurred colour clouds drift slowly behind the app. They have no edges. */
 .aurora {
   position: fixed;
   inset: 0;
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
-  background: radial-gradient(90% 70% at 55% 80%, #0e1438 0%, transparent 70%), var(--color-bg);
+  background: var(--color-bg);
 }
 .aurora span {
   position: absolute;
-  top: -35vh;
-  width: 38vw;
-  height: 170vh;
+  width: 60vw;
+  height: 60vw;
   border-radius: 50%;
-  filter: blur(80px);
-  mix-blend-mode: screen;
+  background: radial-gradient(closest-side, var(--c) 0%, transparent 100%);
+  filter: blur(70px);
+  opacity: 0.14;
   will-change: transform, opacity;
+  animation: aurora-drift var(--t) ease-in-out var(--d) infinite alternate, aurora-pulse calc(var(--t) * 0.7) ease-in-out var(--d) infinite alternate;
 }
-.aurora span:nth-child(1) {
-  left: -20vw;
-  background: linear-gradient(180deg, transparent 5%, #2fbf6a 35%, #2f6bd9 65%, transparent 95%);
-  animation: aurora-sweep-right 17s ease-in-out infinite alternate, aurora-pulse 7s ease-in-out infinite alternate;
-}
-.aurora span:nth-child(2) {
-  left: 70vw;
-  background: linear-gradient(180deg, transparent 10%, #8a4cd9 40%, #4b4fd9 70%, transparent 95%);
-  animation: aurora-sweep-left 21s ease-in-out infinite alternate, aurora-pulse 9s ease-in-out -3s infinite alternate;
-}
-.aurora span:nth-child(3) {
-  left: 20vw;
-  width: 30vw;
-  background: linear-gradient(180deg, transparent 15%, #2f6bd9 45%, #2fb5c4 70%, transparent 92%);
-  animation: aurora-sway 13s ease-in-out infinite alternate, aurora-pulse 6s ease-in-out -2s infinite alternate;
-}
-.aurora span:nth-child(4) {
-  left: 45vw;
-  width: 26vw;
-  background: linear-gradient(180deg, transparent 10%, #c8c23c 40%, #e0882f 72%, transparent 95%);
-  animation: aurora-sway 19s ease-in-out -6s infinite alternate-reverse, aurora-pulse 8s ease-in-out -5s infinite alternate;
-}
-.aurora span:nth-child(5) {
-  left: 8vw;
-  width: 30vw;
-  background: linear-gradient(180deg, transparent 12%, #e0882f 40%, #d9423f 70%, transparent 94%);
-  animation: aurora-sweep-right 24s ease-in-out -8s infinite alternate, aurora-pulse 10s ease-in-out -1s infinite alternate;
-}
-.aurora span:nth-child(6) {
-  left: 60vw;
-  width: 28vw;
-  background: linear-gradient(180deg, transparent 10%, #d9423f 38%, #8a4cd9 72%, transparent 95%);
-  animation: aurora-sway 23s ease-in-out -11s infinite alternate, aurora-pulse 11s ease-in-out -4s infinite alternate;
-}
-.aurora span:nth-child(7) {
-  left: 30vw;
-  width: 26vw;
-  background: linear-gradient(180deg, transparent 10%, #4b4fd9 40%, #2fbf6a 72%, transparent 95%);
-  animation: aurora-sweep-left 26s ease-in-out -14s infinite alternate, aurora-pulse 12s ease-in-out -6s infinite alternate;
-}
+.aurora span:nth-child(1) { --c: #8a4cd9; --t: 22s; --d: -4s; left: -10vw; top: -10vh; } /* violet */
+.aurora span:nth-child(2) { --c: #4b4fd9; --t: 25s; --d: -8s; left: 40vw; top: -15vh; } /* indigo */
+.aurora span:nth-child(3) { --c: #2f6bd9; --t: 28s; --d: -12s; left: 75vw; top: 5vh; } /* blue */
+.aurora span:nth-child(4) { --c: #2fbf6a; --t: 31s; --d: -16s; left: 70vw; top: 50vh; } /* green */
+.aurora span:nth-child(5) { --c: #c8c23c; --t: 34s; --d: -20s; left: 35vw; top: 55vh; } /* yellow */
+.aurora span:nth-child(6) { --c: #e0882f; --t: 37s; --d: -24s; left: 0vw; top: 50vh; } /* orange */
+.aurora span:nth-child(7) { --c: #d9423f; --t: 40s; --d: -28s; left: -15vw; top: 20vh; } /* red */
+
 /* A dark edge keeps the text easy to read. */
 .aurora::after {
   content: "";
@@ -128,24 +61,14 @@ body {
   inset: 0;
   background: radial-gradient(120% 90% at 50% 50%, transparent 30%, #05060c 100%);
 }
-@keyframes aurora-sweep-right {
-  0% { transform: translate3d(0, 0, 0) skewX(-18deg) scaleX(0.8); }
-  50% { transform: translate3d(45vw, 6vh, 0) skewX(10deg) scaleX(1.3); }
-  100% { transform: translate3d(95vw, -5vh, 0) skewX(-12deg) scaleX(0.9); }
-}
-@keyframes aurora-sweep-left {
-  0% { transform: translate3d(0, 0, 0) skewX(16deg) scaleX(1); }
-  50% { transform: translate3d(-40vw, -7vh, 0) skewX(-12deg) scaleX(1.35); }
-  100% { transform: translate3d(-85vw, 5vh, 0) skewX(14deg) scaleX(0.8); }
-}
-@keyframes aurora-sway {
-  0% { transform: translate3d(-18vw, 5vh, 0) skewX(-22deg) scaleX(0.7); }
-  50% { transform: translate3d(8vw, -8vh, 0) skewX(14deg) scaleX(1.25); }
-  100% { transform: translate3d(26vw, 6vh, 0) skewX(-10deg) scaleX(0.85); }
+@keyframes aurora-drift {
+  0% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(12vw, -8vh, 0); }
+  100% { transform: translate3d(-10vw, 10vh, 0); }
 }
 @keyframes aurora-pulse {
-  0% { opacity: 0.05; }
-  100% { opacity: 0.15; }
+  0% { opacity: 0.08; }
+  100% { opacity: 0.18; }
 }
 @media (prefers-reduced-motion: reduce) {
   .aurora span {
