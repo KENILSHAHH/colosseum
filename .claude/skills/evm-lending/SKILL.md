@@ -1,6 +1,6 @@
 ---
 name: evm-lending
-description: Aave v3 and Morpho on Ethereum, Arbitrum, Base, Tempo and Robinhood Chain. Supply, borrow, health factor, flash-loan unwind, address sources. Use for lending rates, leveraged positions, health factor guards, or any Aave or Morpho question.
+description: Aave v3, Aave v4 and Morpho on Ethereum, Arbitrum, Base, Tempo and Robinhood Chain. Supply, borrow, health factor, flash-loan unwind, address sources. Use for lending rates, leveraged positions, health factor guards, or any Aave or Morpho question.
 ---
 
 # EVM lending
@@ -23,6 +23,19 @@ Contract addresses come from official address books only. Never take an address 
 Health factor = `collateral × liquidationThreshold / debt`. Liquidation starts below 1.0.
 
 Worked case: supply 2 ETH at 4,000 USD, borrow at 60% LTV → debt 4,800 USDC. With a liquidation threshold of 0.83, HF = 8,000 × 0.83 / 4,800 = 1.38. The guard default trigger is 1.15.
+
+## Aave v4 (Ethereum mainnet)
+
+Verified against the official API on 2026-10-12. Live since 2026-03-30.
+
+- Design: hubs hold the liquidity (Core, Plus, Prime). Spokes are the markets users act on (Main, Bluechip, Forex, Gold, Lido, Etherfi, Kelp, Lombard, Ethena, PAXG Gold, Pendle and more). A spoke draws liquidity from a hub inside a credit line.
+- One token can be in several spokes. The rate, the collateral factor and the caps are different in each. Always name the spoke.
+- A position belongs to one spoke. The health factor is separate for each spoke. Collateral in one spoke does not protect debt in another.
+- Source of truth: the AaveKit GraphQL API at `https://api.aave.com/graphql`. It gives reserves, positions and ready transactions. `PercentNumber.normalized` is the percent value (3.99 = 3.99%). The address book package has no v4 entries.
+- Tools: `aave_v4_markets` (reserve ids, rates), `aave_v4_account` (positions for each spoke), `aave_v4_action` (supply, borrow, withdraw, repay).
+- A reserve id from the API is a string. The on-chain id is a small number inside one spoke. Do not mix them.
+- Native ETH goes through a gateway contract that the API selects. An ERC-20 needs an approval to the spoke first. The API adds it.
+- The Aave v3 guard and the unwind contract do not work for v4. A v4 guard needs its own transaction.
 
 ## Unwind design (this product)
 

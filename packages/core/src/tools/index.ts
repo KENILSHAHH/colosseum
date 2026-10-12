@@ -4,6 +4,7 @@
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import * as aave from "../adapters/aave";
+import * as aaveV4 from "../adapters/aaveV4";
 import * as evm from "../adapters/evm";
 import * as hl from "../adapters/hyperliquid";
 import * as jupiter from "../adapters/jupiter";
@@ -112,6 +113,17 @@ export function buildTools(ctx: ToolContext) {
       { chain: z.enum(["ethereum", "arbitrum", "base"]), address: z.string().optional() },
       run(({ chain, address: a }) => aave.getAccount(chain, (a ?? address) as `0x${string}`)), read),
 
+    tool("aave_v4_markets", "List live Aave v4 reserves on Ethereum mainnet. Aave v4 has hubs (shared liquidity) and spokes (markets with their own risk rules). One token can be in several spokes, with a different rate in each. Returns the reserve id for aave_v4_action, the spoke, the hub, supply and borrow APY in percent, the collateral factor and the size.",
+      { asset: z.string().optional().describe("Token symbol, for example USDC or WETH"), spoke: z.string().optional().describe("Spoke name, for example Main, Bluechip, Lido") },
+      run(async (a) => {
+        const reserves = await aaveV4.listReserves(a);
+        return { count: reserves.length, reserves: reserves.slice(0, 40), source: "https://api.aave.com/graphql" };
+      }), read),
+
+    tool("aave_v4_account", "Read the Aave v4 positions of an address on Ethereum: one position for each spoke, with supplied value, collateral, debt, health factor and net APY. The health factor is separate for each spoke. Default: the agent wallet. Pass the linked wallet address to read the user's own positions.",
+      { address: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional() },
+      run(async ({ address: a }) => ({ user: a ?? address, positions: await aaveV4.getPositions(a ?? address), source: "https://api.aave.com/graphql" })), read),
+
     tool("evm_simulate", "Simulate EVM transactions from the agent wallet on live chain state. Read-only. Use it to test calldata or a contract deployment that you built.",
       { chain: z.enum(EVM_CHAINS), transactions: z.array(TxShape).min(1).max(12) },
       run(({ chain, transactions }) => evm.simulate(chain, address, transactions.map(toEvmTx))), read),
@@ -167,6 +179,31 @@ export function buildTools(ctx: ToolContext) {
         return act("evm_transactions", { chain: a.chain, transactions: wrapped, linkedWallet: linked }, {
           venue: CHAINS[a.chain].name, chain: CHAINS[a.chain].name, summary: `From your wallet ${linked}: ${a.summary}`, sources: a.sources, simulation,
           transactions: wrapped.map((t) => ({ ...t, chainId })),
+        }, a.usdValue);
+      })),
+
+    tool("aave_v4_action", "Supply, borrow, withdraw or repay on Aave v4 (Ethereum mainnet). The official Aave API builds the transactions, with the token approval when one is needed. wallet=agent sends them from the agent wallet after a simulation. wallet=linked only returns the transactions for the user's own wallet: request a permission for their contracts and functions, then send them with linked_wallet_send_transactions. Get the reserve id from aave_v4_markets.",
+      {
+        action: z.enum(["supply", "borrow", "withdraw", "repay"]),
+        reserveId: z.string().min(8).describe("Reserve id from aave_v4_markets"),
+        amount: z.string().regex(/^\d+(\.\d+)?$/).describe("Whole tokens, for example 12.5. Ignored when max is true."),
+        max: z.boolean().optional().describe("Withdraw or repay the full balance"),
+        native: z.boolean().optional().describe("Use ETH in place of WETH"),
+        wallet: z.enum(["agent", "linked"]).default("agent"),
+        usdValue: z.number().min(0).describe("USD value of the amount"),
+      },
+      run(async (a) => {
+        const linked = a.wallet === "linked" ? await delegation.getLinkedWallet(ctx.userId) : null;
+        if (a.wallet === "linked" && !linked) throw new Error("The user has no linked wallet.");
+        const txs = await aaveV4.buildAction({ action: a.action, reserveId: a.reserveId, amount: a.amount, max: a.max, native: a.native, sender: linked ?? address });
+        if (linked) return { status: "TRANSACTIONS_BUILT", wallet: linked, chain: "ethereum", transactions: txs, note: "Nothing was sent. Each transaction needs an active permission for its contract (`to`) and its function (the first 4 bytes of `data`). Then call linked_wallet_send_transactions with these transactions." };
+        const simulation = await evm.simulate("ethereum", address, txs);
+        const bad = simulation.results.find((r, i) => r.status === "revert" && (i === 0 || simulation.method === "eth_simulateV1"));
+        if (bad) throw new Error(`Simulation: transaction ${bad.index + 1} reverts (${bad.error}). Nothing was sent. Check the balance, the gas and the limits of the reserve.`);
+        const summary = `Aave v4: ${a.action} ${a.max ? "all" : a.amount}`;
+        return act("evm_transactions", { chain: "ethereum", transactions: txs }, {
+          venue: "Aave v4", chain: CHAINS.ethereum.name, summary, sources: ["https://api.aave.com/graphql"], simulation,
+          transactions: txs.map((t) => ({ ...t, chainId: aaveV4.AAVE_V4_CHAIN_ID })),
         }, a.usdValue);
       })),
 
@@ -283,8 +320,8 @@ export function buildTools(ctx: ToolContext) {
 }
 
 export const TOOL_NAMES = [
-  "wallet_overview", "rates_compare", "hl_markets", "hl_account", "hl_outcomes", "sol_quote", "bridge_quote", "bridge_status", "aave_account", "evm_simulate",
-  "hl_open_position", "hl_close_position", "aave_supply_borrow", "bridge", "evm_send_transactions", "guard_register_aave",
+  "wallet_overview", "rates_compare", "hl_markets", "hl_account", "hl_outcomes", "sol_quote", "bridge_quote", "bridge_status", "aave_account", "aave_v4_markets", "aave_v4_account", "evm_simulate",
+  "hl_open_position", "hl_close_position", "aave_supply_borrow", "bridge", "evm_send_transactions", "guard_register_aave", "aave_v4_action",
   "linked_wallet_overview", "linked_wallet_request_permission", "linked_wallet_send_transactions",
 ];
 export const allToolNames = () => TOOL_NAMES.map((t) => `mcp__${SERVER_NAME}__${t}`);

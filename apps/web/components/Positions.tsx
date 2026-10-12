@@ -15,11 +15,12 @@ export function PositionsView() {
   const hl = data.hyperliquid;
   const walletUsd = data.balances.reduce((s, b) => s + (b.usdc ?? 0), 0);
   const hlUsd = hl.accounts.reduce((s, a) => s + a.accountValue, 0);
-  const aaveNet = data.aave.reduce((s, a) => s + a.collateralUsd - a.debtUsd, 0);
+  const v4 = data.aaveV4 ?? [];
+  const aaveNet = data.aave.reduce((s, a) => s + a.collateralUsd - a.debtUsd, 0) + v4.reduce((s, a) => s + a.suppliedUsd - a.debtUsd, 0);
   const guardFor = (venue: string, match: (p: Record<string, any>) => boolean) => data.guards.find((g) => g.venue === venue && match(g.params));
 
   const nothing =
-    data.errors.length === 0 && hl.positions.length === 0 && data.aave.length === 0 && hlUsd === 0 && data.balances.every((b) => !b.error && (b.usdc ?? 0) === 0 && (b.eth ?? 0) === 0);
+    data.errors.length === 0 && hl.positions.length === 0 && data.aave.length === 0 && v4.length === 0 && hlUsd === 0 && data.balances.every((b) => !b.error && (b.usdc ?? 0) === 0 && (b.eth ?? 0) === 0);
   if (nothing)
     return (
       <div className="mx-auto w-full max-w-[560px] px-6 py-20 text-center">
@@ -96,6 +97,23 @@ export function PositionsView() {
           })}
         </Table>
       </Block>
+
+      {v4.length > 0 && (
+        <Block title="Aave v4" empty={null}>
+          <Table head={["Spoke", "Supplied", "Debt", "LTV now", "Health factor", "Net APY"]}>
+            {v4.map((a) => (
+              <tr key={a.spoke}>
+                <td className="font-medium">{a.spoke}</td>
+                <td>{usd(a.suppliedUsd)}</td>
+                <td>{usd(a.debtUsd)}</td>
+                <td>{a.collateralUsd > 0 ? `${((a.debtUsd / a.collateralUsd) * 100).toFixed(1)}%` : "—"}</td>
+                <td className={a.healthFactor !== null && a.healthFactor < 1.25 ? "text-warn" : a.healthFactor !== null ? "text-good" : ""}>{a.healthFactor === null ? "No debt" : n(a.healthFactor, 3)}</td>
+                <td>{a.netApyPct.toFixed(2)}%</td>
+              </tr>
+            ))}
+          </Table>
+        </Block>
+      )}
 
       <Block title="Hyperliquid balances" empty={hl.accounts.length === 0 ? "No Hyperliquid balance." : null}>
         <Table head={["Dex", "Account value", "Margin used", "Free"]}>
