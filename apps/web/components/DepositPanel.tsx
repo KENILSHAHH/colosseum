@@ -7,35 +7,21 @@ import { useState } from "react";
 import { post, short, type Me } from "@/lib/api";
 
 const CHAINS = [
-  { id: 8453, name: "Base", native: "ETH", trading: true },
-  { id: 42161, name: "Arbitrum", native: "ETH", trading: true },
-  { id: 1, name: "Ethereum", native: "ETH", trading: true },
-  { id: 10, name: "Optimism", native: "ETH", trading: false },
-  { id: 137, name: "Polygon", native: "POL", trading: false },
-  { id: 56, name: "BNB Chain", native: "BNB", trading: false },
+  { id: 8453, name: "Base", native: "ETH" },
+  { id: 42161, name: "Arbitrum", native: "ETH" },
+  { id: 1, name: "Ethereum", native: "ETH" },
 ];
 const TOKENS = ["USDC", "USDT", "native", "WBTC", "DAI", "WETH"] as const;
-type Mode = "trading" | "prompts";
 
-interface Plan {
-  expectedOusd: number | null; etaSeconds: number | null;
-  approval: { token: string; spender: string; amount: string } | null;
-  transaction: { to: string; data: string; value: string };
-}
+interface Plan { transaction: { to: string; data: string; value: string } }
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
-// approve(address,uint256)
-const approveData = (spender: string, amount: string) => `0x095ea7b3${spender.slice(2).toLowerCase().padStart(64, "0")}${BigInt(amount).toString(16).padStart(64, "0")}`;
 
-/**
- * Add money to the agent wallet from an own wallet.
- * "For positions": the token arrives as it is, ready for the agent to trade. "For prompts": it becomes OUSD on Tempo.
- */
+/** Add money to the one wallet of the user, from an own wallet. The same funds pay for prompts and open positions. */
 export function DepositPanel({ me }: { me: Me }) {
   const qc = useQueryClient();
   const { wallets } = useWallets();
   const { connectWallet } = useConnectWallet();
-  const [mode, setMode] = useState<Mode>("trading");
   const [chainId, setChainId] = useState(8453);
   const [symbol, setSymbol] = useState<(typeof TOKENS)[number]>("USDC");
   const [amount, setAmount] = useState("");
@@ -43,8 +29,7 @@ export function DepositPanel({ me }: { me: Me }) {
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const wallet = wallets.find((w) => w.walletClientType !== "privy" && w.walletClientType !== "privy-v2");
-  const chains = CHAINS.filter((c) => mode === "prompts" || c.trading);
-  const chain = chains.find((c) => c.id === chainId) ?? chains[0]!;
+  const chain = CHAINS.find((c) => c.id === chainId) ?? CHAINS[0]!;
   const agent = me.wallet.address;
 
   async function deposit() {
@@ -52,8 +37,7 @@ export function DepositPanel({ me }: { me: Me }) {
     setNote(null);
     try {
       setStep("Prepare");
-      const body = { chainId: chain.id, symbol, amount };
-      const plan = mode === "trading" ? await post<Plan>("/deposit/transfer", body) : await post<Plan>("/deposit/quote", { ...body, from: wallet.address });
+      const plan = await post<Plan>("/deposit/transfer", { chainId: chain.id, symbol, amount });
       setStep(`Switch to ${chain.name}`);
       await wallet.switchChain(chain.id);
       const provider = await wallet.getEthereumProvider();
@@ -65,16 +49,11 @@ export function DepositPanel({ me }: { me: Me }) {
         }
         throw new Error("The transaction is not confirmed yet. Look in your wallet.");
       };
-      if (plan.approval) {
-        setStep("Approve in your wallet");
-        const h = await provider.request({ method: "eth_sendTransaction", params: [{ from: wallet.address, to: plan.approval.token, data: approveData(plan.approval.spender, plan.approval.amount) }] });
-        if (!(await confirmed(h as string))) throw new Error("The approval failed.");
-      }
       setStep("Confirm in your wallet");
       const hash = await provider.request({ method: "eth_sendTransaction", params: [{ from: wallet.address, ...plan.transaction }] });
       setStep("Wait for the deposit");
       if (!(await confirmed(hash as string))) throw new Error("The deposit failed.");
-      setNote({ ok: true, text: plan.expectedOusd === null ? "Done. The funds are in your agent wallet." : `Sent. About ${plan.expectedOusd.toFixed(2)} OUSD arrives soon.` });
+      setNote({ ok: true, text: "Done. The funds are in your wallet." });
       setAmount("");
       setTimeout(() => { for (const k of ["balances", "positions"]) qc.invalidateQueries({ queryKey: [k] }); }, 4_000);
     } catch (e) {
@@ -84,23 +63,13 @@ export function DepositPanel({ me }: { me: Me }) {
     }
   }
 
-  const tab = (m: Mode, label: string) => (
-    <button onClick={() => { setMode(m); setNote(null); }} className={`flex-1 rounded-md px-2 py-1 text-[12px] ${mode === m ? "bg-raised text-ink" : "text-faint hover:text-dim"}`}>
-      {label}
-    </button>
-  );
-
   return (
     <section>
       <h3 className="mb-1.5 px-1 text-[11px] font-medium uppercase tracking-wider text-faint">Deposit</h3>
       <div className="rounded-lg border border-line bg-bg/40 p-3">
-        <div className="mb-2 flex gap-1 rounded-lg border border-line p-0.5">
-          {tab("trading", "For positions")}
-          {tab("prompts", "For prompts")}
-        </div>
         <div className="grid grid-cols-2 gap-1.5">
           <select value={chain.id} onChange={(e) => setChainId(Number(e.target.value))} className="rounded-md border border-line bg-raised px-2 py-1.5 text-[12.5px]">
-            {chains.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {CHAINS.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
           <select value={symbol} onChange={(e) => setSymbol(e.target.value as (typeof TOKENS)[number])} className="rounded-md border border-line bg-raised px-2 py-1.5 text-[12.5px]">
             {TOKENS.map((t) => <option key={t} value={t}>{t === "native" ? chain.native : t}</option>)}
@@ -112,7 +81,7 @@ export function DepositPanel({ me }: { me: Me }) {
           {step ?? (wallet ? `Deposit from ${short(wallet.address)}` : "Connect a wallet")}
         </button>
         {note && <p className={`mt-2 text-[11.5px] ${note.ok ? "text-good" : "text-bad"}`}>{note.text}</p>}
-        <button onClick={async () => { await navigator.clipboard.writeText(agent); setCopied(true); setTimeout(() => setCopied(false), 1500); }} title="Copy the agent wallet address" className="mt-2 flex w-full items-center justify-between gap-2 text-[11.5px] text-faint hover:text-dim">
+        <button onClick={async () => { await navigator.clipboard.writeText(agent); setCopied(true); setTimeout(() => setCopied(false), 1500); }} title="Copy your wallet address" className="mt-2 flex w-full items-center justify-between gap-2 text-[11.5px] text-faint hover:text-dim">
           <span>or send to {short(agent)}</span>
           {copied ? <Check className="size-3 text-good" /> : <Copy className="size-3" />}
         </button>

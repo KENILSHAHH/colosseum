@@ -118,6 +118,41 @@ async function* chatEvents(userId: string, body: z.infer<typeof ChatBody>, signa
   yield* runChatAgent({ userId, prompt: body.prompt, resume: body.sessionId, signal });
 }
 
+/** Value moved to OUSD on Tempo when the wallet has none left. It pays for 100 prompts at 0.01 USD. */
+const PROMPT_TOP_UP_USD = 1;
+const toppingUp = new Map<string, Promise<boolean>>();
+
+/**
+ * Convert about 1 USD of a token of the wallet to OUSD on Tempo, then wait until it arrives.
+ * A stablecoin is used before another token. Returns false when no token can pay.
+ */
+function topUpPromptCredit(userId: string, address: string, price: number): Promise<boolean> {
+  const running = toppingUp.get(userId);
+  if (running) return running;
+  const job = (async () => {
+    const assets = await lifi.walletAssets(address, PROMPT_TOP_UP_USD * 1.2).catch(() => []);
+    const stable = (s: string) => /^(USDC|USDT|DAI|USDC\.e|USDbC)$/i.test(s);
+    assets.sort((x, y) => Number(stable(y.symbol)) - Number(stable(x.symbol)) || (y.usd ?? 0) - (x.usd ?? 0));
+    const account = await walletAccount(userId);
+    for (const a of assets) {
+      try {
+        const r = await lifi.convertToOusd(account, { chainId: a.chainId, token: a.token, toAddress: address, maxUsd: PROMPT_TOP_UP_USD });
+        console.log(`prompt credit: ${a.symbol} on ${a.chainName} -> about ${r.expectedOusd} OUSD for ${userId} (${r.hash})`);
+        for (let i = 0; i < 30; i++) {
+          if (((await ousdBalance(address)) ?? 0) >= price) return true;
+          await new Promise((res) => setTimeout(res, 2000));
+        }
+        return false;
+      } catch (err) {
+        console.error(`prompt credit: ${a.symbol} on ${a.chainName} did not convert for ${userId}:`, err instanceof Error ? err.message.split("\n")[0] : err);
+      }
+    }
+    return false;
+  })().finally(() => toppingUp.delete(userId));
+  toppingUp.set(userId, job);
+  return job;
+}
+
 const SSE_HEADERS = { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" };
 
 /** Run the agent and send its events as a server-sent event stream. `unpaid` records a price that nobody paid. */
@@ -152,9 +187,11 @@ app.post("/chat", async (c) => {
   // The agent wallet pays the paid route. The check below gives a clear message before a payment that cannot succeed.
   const price = promptPriceUsd();
   const wallet = await getOrCreateWallet(userId);
-  const balance = await ousdBalance(wallet.address);
+  let balance = await ousdBalance(wallet.address);
+  // One wallet pays for prompts and holds the trading funds. When its OUSD is used up, a small amount of another token becomes OUSD.
+  if (balance !== null && balance < price && (await topUpPromptCredit(userId, wallet.address, price))) balance = await ousdBalance(wallet.address);
   if (balance !== null && balance < price)
-    return c.json({ error: `A prompt costs ${price} USD. The agent wallet holds ${balance.toFixed(4)} OUSD on Tempo. Add OUSD in the Payments panel, or send OUSD on Tempo to ${wallet.address}.`, code: "insufficient_ousd" }, 402);
+    return c.json({ error: `Your wallet has no funds for this prompt (${price} USD). Deposit a token in the Deposit panel, with a little ETH for gas, then try again.`, code: "insufficient_funds" }, 402);
 
   const payFetch = await agentWalletFetch(userId);
   let paid: Response;
@@ -238,17 +275,11 @@ app.get("/billing", async (c) => {
   return c.json({ totalChargedUsd: Number(totals?.charged ?? 0), claudeCostUsd: Number(llm?.cost ?? 0), tokens: Number(llm?.tokens ?? 0), charges, payment });
 });
 
-// Two balances in USD: the agent wallet and the user's own (Privy) wallet. Tokens on every chain LI.FI reads, plus OUSD on Tempo.
+// The balance of the one wallet of the user, in USD: tokens on every chain LI.FI reads, plus OUSD on Tempo.
 app.get("/billing/balances", async (c) => {
-  const userId = c.get("userId");
-  const [agent, deposit] = await Promise.all([getOrCreateWallet(userId), getDepositWallet(userId)]);
-  const total = async (address: string) => {
-    const [assets, ousd] = await Promise.all([lifi.walletAssets(address, 0).catch(() => null), ousdBalance(address)]);
-    return { address, usd: assets === null && ousd === null ? null : (assets ?? []).reduce((s, a) => s + (a.usd ?? 0), 0) + (ousd ?? 0) };
-  };
-  const walletAddress = deposit.address ?? userId;
-  const [a, w] = await Promise.all([total(agent.address), total(walletAddress)]);
-  return c.json({ agent: a, wallet: w });
+  const { address } = await getOrCreateWallet(c.get("userId"));
+  const [assets, ousd] = await Promise.all([lifi.walletAssets(address, 0).catch(() => null), ousdBalance(address)]);
+  return c.json({ address, usd: assets === null && ousd === null ? null : (assets ?? []).reduce((s, a) => s + (a.usd ?? 0), 0) + (ousd ?? 0) });
 });
 
 // Every token of the agent wallet that can move to OUSD on Tempo. Routes come from LI.FI, the API of jumper.xyz.

@@ -59,7 +59,7 @@ export function Sidebar({ session, onNewChat }: { session: ReturnType<typeof use
               <div className="flex items-center justify-between">
                 <span className="min-w-0">
                   {session.label && <span className="block truncate text-[12.5px]">{session.label}</span>}
-                  <span className="block font-mono text-[12.5px] text-dim" title={`Your wallet: ${me.address}`}>{short(me.address)}</span>
+
                 </span>
                 <button onClick={session.signOut} title="Sign out" className="text-faint hover:text-ink">
                   <LogOut className="size-3.5" />
@@ -89,28 +89,21 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 interface Balance { address: string; usd: number | null }
 
-/** Two balances in USD: the agent wallet and the user's own wallet. A click copies the address. */
+/** The one wallet of the user: its balance in USD. A click copies the address. */
 function Balances() {
-  const { data } = useQuery({ queryKey: ["balances"], queryFn: () => api<{ agent: Balance; wallet: Balance }>("/billing/balances"), refetchInterval: 30_000 });
-  const [copied, setCopied] = useState<string | null>(null);
-  const copy = async (address: string) => {
-    await navigator.clipboard.writeText(address);
-    setCopied(address);
-    setTimeout(() => setCopied(null), 1500);
-  };
-  const row = (label: string, b: Balance | undefined) => (
-    <button disabled={!b} onClick={() => b && copy(b.address)} title={b ? `Copy ${b.address}` : undefined} className="flex w-full items-center justify-between rounded-md px-1 py-1 text-[13px] hover:bg-raised">
-      <span className="flex items-center gap-1.5 text-dim">
-        {label}
-        {b && copied === b.address ? <Check className="size-3 text-good" /> : b && <span className="font-mono text-[11px] text-faint">{short(b.address)}</span>}
-      </span>
-      <span className="font-mono tabular-nums">{!b ? "…" : b.usd === null ? "not read" : usd(b.usd)}</span>
-    </button>
-  );
+  const { data } = useQuery({ queryKey: ["balances"], queryFn: () => api<Balance>("/billing/balances"), refetchInterval: 30_000 });
+  const [copied, setCopied] = useState(false);
   return (
-    <Section title="Balances">
-      {row("Agent", data?.agent)}
-      {row("Wallet", data?.wallet)}
+    <Section title="Wallet">
+      <button
+        disabled={!data}
+        onClick={async () => { await navigator.clipboard.writeText(data!.address); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+        title={data ? `Copy ${data.address}` : undefined}
+        className="flex w-full items-center justify-between rounded-md px-1 py-1 hover:bg-raised"
+      >
+        <span className="flex items-center gap-1.5 font-mono text-[11.5px] text-faint">{data ? (copied ? <Check className="size-3 text-good" /> : short(data.address)) : "…"}</span>
+        <span className="font-mono text-[15px] tabular-nums">{!data ? "" : data.usd === null ? "not read" : usd(data.usd)}</span>
+      </button>
     </Section>
   );
 }

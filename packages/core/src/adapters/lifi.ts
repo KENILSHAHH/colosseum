@@ -70,10 +70,11 @@ const gasCostOf = (q: LifiQuote, feeCap: bigint) => {
 };
 
 /**
- * Convert the full balance of one token to OUSD on Tempo. `account` signs. The OUSD arrives at `toAddress`.
- * An ERC-20 moves in full. A native token keeps a reserve for gas.
+ * Convert one token to OUSD on Tempo. `account` signs. The OUSD arrives at `toAddress`.
+ * Default: the full balance. An ERC-20 moves in full, a native token keeps a reserve for gas.
+ * `maxUsd` converts only about that value and leaves the rest in the wallet.
  */
-export async function convertToOusd(account: Account, args: { chainId: number; token: string; toAddress: string; rpcUrl?: string }) {
+export async function convertToOusd(account: Account, args: { chainId: number; token: string; toAddress: string; rpcUrl?: string; maxUsd?: number }) {
   const chain = await viemChain(args.chainId);
   // `rpcUrl` replaces the public RPC of the chain, for a paid endpoint or a local fork.
   const reader = createPublicClient({ chain, transport: http(args.rpcUrl) });
@@ -91,6 +92,13 @@ export async function convertToOusd(account: Account, args: { chainId: number; t
     const probe = await quote({ chainId: args.chainId, token: args.token, amount: balance / 2n, from: account.address, to: args.toAddress });
     amount = balance - gasCostOf(probe, feeCap) * GAS_RESERVE_FACTOR;
     if (amount <= 0n) throw new NothingToConvertError(`The ${chain.nativeCurrency.symbol} balance on ${chain.name} is only enough for gas.`);
+  }
+  if (args.maxUsd !== undefined) {
+    const info = await getJson<{ decimals: number; priceUSD?: string }>(`${LIFI}/token?chain=${args.chainId}&token=${args.token}`);
+    const price = Number(info.priceUSD ?? 0);
+    if (!(price > 0)) throw new Error("LI.FI has no price for this token.");
+    const part = parseUnits((args.maxUsd / price).toFixed(info.decimals), info.decimals);
+    if (part < amount) amount = part;
   }
   const q = await quote({ chainId: args.chainId, token: args.token, amount, from: account.address, to: args.toAddress });
   const tx = q.transactionRequest;
