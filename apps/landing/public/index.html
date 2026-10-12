@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PayI — Your DeFi agent</title>
+  <meta name="description" content="PayI is one AI agent for DeFi. Say what you want — trade, lend, hedge, automate — and it plans, simulates and executes it across Ethereum, Arbitrum, Base, Polygon, Robinhood Chain, Hyperliquid, Solana and Tempo." />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- ============ NAV ============ -->
+  <header class="nav" id="nav">
+    <div class="nav__inner">
+      <a href="#top" class="logo" aria-label="PayI home">
+        <span class="logo__mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V5h7a5 5 0 0 1 0 10H8" /><circle cx="18.5" cy="18.5" r="1.8" /></svg></span>
+        <span class="logo__text">PayI</span>
+      </a>
+      <nav class="nav__links" aria-label="Primary">
+        <a href="#products">Product</a>
+        <a href="#how">How it works</a>
+        <a href="#rails">Chains</a>
+        <a href="#security">Security</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <a class="btn btn--light btn--sm" href="https://app.payi.finance">Open app</a>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- ============ HERO ============ -->
+    <section class="hero">
+      <div class="hero__bg" aria-hidden="true">
+        <div class="aurora aurora--1"></div>
+        <div class="aurora aurora--2"></div>
+        <div class="aurora aurora--3"></div>
+        <div class="hero__grid"></div>
+        <div class="hero__noise"></div>
+      </div>
+
+      <div class="hero__content">
+        <a href="https://app.payi.finance" class="pill reveal">
+          <span class="pill__dot"></span>
+          Live on mainnet · 0.01 USD a prompt
+          <span class="pill__arrow">→</span>
+        </a>
+        <h1 class="hero__title reveal" style="--d: 80ms">Pay<span class="hero__i">I</span></h1>
+        <p class="hero__lead reveal" style="--d: 160ms">
+          One AI agent for <em>all of DeFi.</em><br />
+          Say what you want. It plans, checks and executes it — across nine chains.
+        </p>
+        <div class="hero__ctas reveal" style="--d: 240ms">
+          <a class="btn btn--primary" href="https://app.payi.finance">Open the app</a>
+          <a href="#story" class="btn btn--ghost">See how it works</a>
+        </div>
+      </div>
+
+      <a href="#story" class="scroll-cue" aria-label="Scroll down">
+        <span class="scroll-cue__mouse"><span></span></span>
+      </a>
+    </section>
+
+    <!-- ============ STATEMENT ============ -->
+    <section class="statement" id="story">
+      <div class="container">
+        <p class="eyebrow reveal">The shift</p>
+        <h2 class="statement__text" data-words>
+          DeFi is spread across chains, bridges, dashboards and signatures. PayI puts it in one conversation. You state the goal. The agent finds the route, tests it on live chain data, and does it from your wallet.
+        </h2>
+      </div>
+    </section>
+
+    <!-- ============ PRODUCTS ============ -->
+    <section class="section" id="products">
+      <div class="container">
+        <div class="section__head">
+          <p class="eyebrow reveal">Product</p>
+          <h2 class="section__title reveal">Trade, earn and automate in <em>plain words.</em></h2>
+          <p class="section__sub reveal">The agent reads live markets, protocol docs and contract source. When no shortcut exists, it builds the transaction itself and tests it first.</p>
+        </div>
+
+        <div class="cards">
+          <article class="card reveal" style="--d: 0ms">
+            <div class="card__visual card__visual--app">
+              <div class="mock-phone">
+                <div class="mock-phone__bar"></div>
+                <div class="bubble bubble--user">3x long ETH with 50 USD, stop at 2,300</div>
+                <div class="bubble bubble--agent">Entry ~2,520 · liq. 1,710 · stop set</div>
+                <div class="mock-pay">
+                  <span>Open position</span>
+                  <span class="mock-pay__check">✓</span>
+                </div>
+              </div>
+            </div>
+            <div class="card__body">
+              <span class="tag">Trade</span>
+              <h3>Perps, spot and outcomes.</h3>
+              <p>Hyperliquid perps with native stop-loss and take-profit, spot pairs, gold and equity markets, and prediction markets on Hyperliquid and Polymarket.</p>
+            </div>
+          </article>
+
+          <article class="card reveal" style="--d: 100ms">
+            <div class="card__visual card__visual--llm">
+              <div class="mock-chat">
+                <div class="mock-chat__top"><span></span><span></span><span></span></div>
+                <div class="bubble bubble--user">Where does USDC earn the most right now?</div>
+                <div class="bubble bubble--agent">
+                  Aave v4 Main · 5.06% on Ethereum
+                  <div class="mini-confirm"><span class="mini-confirm__icon">⚡</span> Supply in one card, gas paid</div>
+                </div>
+              </div>
+            </div>
+            <div class="card__body">
+              <span class="tag">Earn &amp; borrow</span>
+              <h3>Best rate, every chain.</h3>
+              <p>Lend and borrow on Aave v3 and v4, Morpho, Kamino and Jupiter Lend. The agent compares live rates and moves your funds to the best one.</p>
+            </div>
+          </article>
+
+          <article class="card reveal" style="--d: 200ms">
+            <div class="card__visual card__visual--voice">
+              <div class="voice">
+                <div class="voice__orb"><span></span></div>
+                <div class="voice__wave">
+                  <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                </div>
+                <p class="voice__caption">“Buy 10 USD of ETH every day. Close my loan if ETH falls below 2,000.”</p>
+              </div>
+            </div>
+            <div class="card__body">
+              <span class="tag">Automate</span>
+              <h3>It keeps working when you sleep.</h3>
+              <p>Daily buys, stops, and one-transaction flash-loan unwinds that fire on a price, a health factor or a time — checked every few seconds on our servers.</p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ HOW IT WORKS ============ -->
+    <section class="section section--alt" id="how">
+      <div class="container how">
+        <div class="how__copy">
+          <p class="eyebrow reveal">How it works</p>
+          <h2 class="section__title reveal">From a sentence to a <em>transaction</em> in four steps.</h2>
+          <ol class="steps">
+            <li class="step reveal" data-step="0">
+              <span class="step__num">01</span>
+              <div><h4>Ask</h4><p>Type or say what you want. No forms, no chain switching, no bridge menus.</p></div>
+            </li>
+            <li class="step reveal" data-step="1">
+              <span class="step__num">02</span>
+              <div><h4>Plan</h4><p>The agent reads your balances, live prices and the protocol rules, and picks the route.</p></div>
+            </li>
+            <li class="step reveal" data-step="2">
+              <span class="step__num">03</span>
+              <div><h4>Check</h4><p>Every transaction is simulated on live chain state first. You see the real numbers on a card.</p></div>
+            </li>
+            <li class="step reveal" data-step="3">
+              <span class="step__num">04</span>
+              <div><h4>Execute</h4><p>Your wallet signs, our sponsor pays the gas, and you get the transaction links.</p></div>
+            </li>
+          </ol>
+        </div>
+
+        <div class="how__demo reveal">
+          <div class="demo" id="demo">
+            <div class="demo__head">
+              <div class="demo__avatar">AI</div>
+              <div>
+                <strong>PayI agent</strong>
+                <span class="demo__status"><i></i> live on mainnet</span>
+              </div>
+            </div>
+            <div class="demo__body" id="demoBody"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ CHAINS ============ -->
+    <section class="section" id="rails">
+      <div class="container">
+        <div class="section__head">
+          <p class="eyebrow reveal">Chains &amp; venues</p>
+          <h2 class="section__title reveal">Nine chains. <em>One</em> wallet.</h2>
+        </div>
+
+        <div class="bento">
+          <div class="bento__item bento__item--wide reveal">
+            <span class="status status--live">Live</span>
+            <h3>Pay per prompt with MPP on Tempo</h3>
+            <p>Each prompt costs 0.01 USD, paid in OUSD on Tempo through the Machine Payments Protocol. When the balance runs out, the agent tops it up from any token in your wallet.</p>
+            <div class="limit">
+              <div class="limit__row"><span>Prompt balance</span><strong>1.54 OUSD</strong></div>
+              <div class="limit__bar"><span style="--w: 62%"></span></div>
+              <div class="limit__row limit__row--muted"><span>About 154 prompts left</span><span>0.01 each</span></div>
+            </div>
+          </div>
+          <div class="bento__item reveal" style="--d: 80ms">
+            <h3>Chains</h3>
+            <div class="chips">
+              <span>Ethereum</span><span>Arbitrum</span><span>Base</span><span>Polygon</span><span>Robinhood Chain</span><span>HyperEVM</span><span>Hyperliquid</span><span>Solana</span><span>Tempo</span>
+            </div>
+          </div>
+          <div class="bento__item reveal" style="--d: 120ms">
+            <h3>Venues</h3>
+            <div class="chips">
+              <span>Hyperliquid</span><span>Aave v3</span><span>Aave v4</span><span>Morpho</span><span>Kamino</span><span>Jupiter</span><span>Polymarket</span><span>Relay</span><span>Jumper</span>
+            </div>
+          </div>
+          <div class="bento__item bento__item--stat reveal" style="--d: 160ms">
+            <strong class="big">0 gas</strong>
+            <p>in your wallet on Ethereum, Arbitrum, Base, Polygon and Robinhood Chain</p>
+          </div>
+          <div class="bento__item bento__item--stat reveal" style="--d: 200ms">
+            <strong class="big">1 tx</strong>
+            <p>to close a leveraged loan with a flash loan</p>
+          </div>
+          <div class="bento__item bento__item--stat reveal" style="--d: 240ms">
+            <strong class="big">24/7</strong>
+            <p>jobs and stops that run without you</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SECURITY ============ -->
+    <section class="section section--alt" id="security">
+      <div class="container">
+        <div class="section__head">
+          <p class="eyebrow reveal">Trust &amp; security</p>
+          <h2 class="section__title reveal">Autonomy for the agent. <em>Control</em> for you.</h2>
+          <p class="section__sub reveal">Real funds on mainnet. These are the rules the agent works inside.</p>
+        </div>
+        <div class="features">
+          <div class="feature reveal">
+            <div class="feature__icon"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+            <h4>Your keys stay split</h4>
+            <p>Your wallet is a Privy wallet. Its key is kept in parts and is never whole on our servers.</p>
+          </div>
+          <div class="feature reveal" style="--d: 60ms">
+            <div class="feature__icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+            <h4>Revoke at any time</h4>
+            <p>The agent signs through a signer you added. Remove it and the agent can no longer act.</p>
+          </div>
+          <div class="feature reveal" style="--d: 120ms">
+            <div class="feature__icon"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/></svg></div>
+            <h4>You choose the mode</h4>
+            <p>Confirm every action on a card, or let the agent act on its own within a limit you set.</p>
+          </div>
+          <div class="feature reveal" style="--d: 180ms">
+            <div class="feature__icon"><svg viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></div>
+            <h4>Simulated first</h4>
+            <p>Each transaction runs on live chain state before it is sent. A failing plan never reaches the chain.</p>
+          </div>
+          <div class="feature reveal" style="--d: 240ms">
+            <div class="feature__icon"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg></div>
+            <h4>Scoped permissions</h4>
+            <p>For your own wallet, a permission names the contracts, the functions and an end date. Nothing else is allowed.</p>
+          </div>
+          <div class="feature reveal" style="--d: 300ms">
+            <div class="feature__icon"><svg viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg></div>
+            <h4>Verified contracts</h4>
+            <p>The shared flash-loan executor is open source and verified on Sourcify on every chain it runs on.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ UNDER THE HOOD ============ -->
+    <section class="section" id="developers">
+      <div class="container dev">
+        <div class="dev__copy">
+          <p class="eyebrow reveal">Under the hood</p>
+          <h2 class="section__title reveal">An agent that <em>learns.</em></h2>
+          <p class="section__sub reveal">Built on Claude. When a step fails, the agent finds the cause, fixes it and saves the lesson, so the next chat does not repeat it.</p>
+          <ul class="checks reveal">
+            <li>Typed tools for speed, general tools for everything else</li>
+            <li>Gas sponsored with EIP-7702, one wallet on every EVM chain</li>
+            <li>Jobs that repeat, on a price, a health factor or a time</li>
+          </ul>
+        </div>
+        <div class="code reveal" style="--d: 100ms">
+          <div class="code__tabs"><span class="is-active">job.json</span><span>chat</span></div>
+<pre><code><span class="c">// "Buy 1 USD of gold every day for 30 days"</span>
+{
+  <span class="v">"name"</span>: <span class="s">"Daily gold buy"</span>,
+  <span class="v">"condition"</span>: { <span class="v">"type"</span>: <span class="s">"time"</span>, <span class="v">"at"</span>: <span class="s">"now"</span> },
+  <span class="v">"action"</span>: {
+    <span class="v">"type"</span>: <span class="s">"swap"</span>,
+    <span class="v">"fromChain"</span>: <span class="s">"arbitrum"</span>,
+    <span class="v">"fromToken"</span>: <span class="s">"USDC"</span>,
+    <span class="v">"toToken"</span>: <span class="s">"XAUt0"</span>,
+    <span class="v">"amount"</span>: <span class="s">"1"</span>
+  },
+  <span class="v">"repeat"</span>: { <span class="v">"everyHours"</span>: <span class="n">24</span>, <span class="v">"times"</span>: <span class="n">30</span> }
+}
+<span class="c">// → simulated, scheduled, gas paid by the sponsor</span></code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ CTA ============ -->
+    <section class="cta">
+      <div class="cta__glow" aria-hidden="true"></div>
+      <div class="container cta__inner">
+        <h2 class="reveal">Your DeFi,<br />by <em>conversation.</em></h2>
+        <p class="reveal" style="--d: 80ms">Sign in with your email or a wallet. You get a wallet on every chain at the first sign-in.</p>
+        <a class="btn btn--primary btn--lg reveal" style="--d: 160ms" href="https://app.payi.finance">Open the app</a>
+      </div>
+    </section>
+
+    <!-- ============ FAQ ============ -->
+    <section class="section" id="faq">
+      <div class="container faq">
+        <div>
+          <p class="eyebrow reveal">FAQ</p>
+          <h2 class="section__title reveal">Questions, <em>answered.</em></h2>
+        </div>
+        <div class="faq__list">
+          <details class="reveal">
+            <summary>What is PayI?</summary>
+            <p>A chat app with one AI agent for DeFi. You say what you want, for example "open a 3x ETH long with a stop" or "buy 10 USD of ETH every day", and the agent plans it, tests it on live chain data and executes it from your wallet.</p>
+          </details>
+          <details class="reveal">
+            <summary>Which chains and apps does it support?</summary>
+            <p>Ethereum, Arbitrum, Base, Polygon, Robinhood Chain, HyperEVM, Hyperliquid, Solana and Tempo. Venues include Hyperliquid, Aave v3 and v4, Morpho, Kamino, Jupiter, Polymarket, Relay and Jumper. For anything without a shortcut, the agent builds the transaction itself.</p>
+          </details>
+          <details class="reveal">
+            <summary>What does it cost?</summary>
+            <p>0.01 USD per prompt, paid in OUSD on Tempo. Gas on Ethereum, Arbitrum, Base, Polygon and Robinhood Chain is paid by our sponsor. Venue and bridge fees apply as usual.</p>
+          </details>
+          <details class="reveal">
+            <summary>Who holds my keys?</summary>
+            <p>Your wallet is a Privy wallet: its key is kept in parts and never whole on our servers. The agent signs through a signer you added, and you can remove it at any time.</p>
+          </details>
+          <details class="reveal">
+            <summary>Can the agent act without asking me?</summary>
+            <p>Only if you turn on "act without asking". Otherwise each action waits on a card for your confirmation. Scheduled jobs run on their own once you confirm them.</p>
+          </details>
+          <details class="reveal">
+            <summary>What are the risks?</summary>
+            <p>This runs on mainnet with real funds. Leverage can be liquidated, a fast market can pass a stop, and new contracts carry risk. Nothing here is financial advice. Start with a small amount.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="footer">
+    <div class="container footer__inner">
+      <a href="#top" class="logo">
+        <span class="logo__mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V5h7a5 5 0 0 1 0 10H8" /><circle cx="18.5" cy="18.5" r="1.8" /></svg></span>
+        <span class="logo__text">PayI</span>
+      </a>
+      <p>One AI agent for all of DeFi.</p>
+      <p class="footer__copy">© <span id="year"></span> PayI. <a href="https://app.payi.finance">Open the app</a></p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
