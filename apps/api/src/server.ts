@@ -228,8 +228,10 @@ app.delete("/guards/:id", async (c) => c.json({ cancelled: await cancelGuard(c.r
 
 app.get("/billing", async (c) => {
   const userId = c.get("userId");
-  const charges = await sql()`select kind, amount_usd, reference, detail, created_at from charges where user_id = ${userId} order by created_at desc limit 50`;
-  const [totals] = await sql()`select coalesce(sum(amount_usd), 0) as charged from charges where user_id = ${userId}`;
+  // With payment on, a price that was recorded while payment was off ("dev-unpaid") is not a charge. Nobody paid it.
+  const paidOnly = mppEnabled() ? sql()`and reference is distinct from 'dev-unpaid'` : sql()``;
+  const charges = await sql()`select kind, amount_usd, reference, detail, created_at from charges where user_id = ${userId} ${paidOnly} order by created_at desc limit 50`;
+  const [totals] = await sql()`select coalesce(sum(amount_usd), 0) as charged from charges where user_id = ${userId} ${paidOnly}`;
   const [llm] = await sql()`select coalesce(sum(cost_usd), 0) as cost, coalesce(sum(input_tokens + output_tokens + cache_read + cache_write), 0) as tokens from usage where user_id = ${userId}`;
   const payment = mppEnabled() ? { ousd: await ousdBalance((await getOrCreateWallet(userId)).address), recipient: mppRecipient(), explorer: "https://explore.tempo.xyz" } : null;
   return c.json({ totalChargedUsd: Number(totals?.charged ?? 0), claudeCostUsd: Number(llm?.cost ?? 0), tokens: Number(llm?.tokens ?? 0), charges, payment });
