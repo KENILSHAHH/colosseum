@@ -2,9 +2,10 @@
 
 import { useConnectWallet, useWallets } from "@privy-io/react-auth";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, Loader2 } from "lucide-react";
+import { ArrowDownToLine, Check, Copy, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { post, short, type Me } from "@/lib/api";
+import { MenuItem } from "./MenuItem";
 
 const CHAINS = [
   { id: 8453, name: "Base", native: "ETH" },
@@ -64,9 +65,8 @@ export function DepositPanel({ me }: { me: Me }) {
   }
 
   return (
-    <section>
-      <h3 className="mb-1.5 px-1 text-[11px] font-medium uppercase tracking-wider text-faint">Deposit</h3>
-      <div className="rounded-lg border border-line bg-bg/40 p-3">
+    <MenuItem icon={ArrowDownToLine} label="Deposit">
+      <div className="py-1">
         <div className="grid grid-cols-2 gap-1.5">
           <select value={chain.id} onChange={(e) => setChainId(Number(e.target.value))} className="rounded-md border border-line bg-raised px-2 py-1.5 text-[12.5px]">
             {CHAINS.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -86,6 +86,6 @@ export function DepositPanel({ me }: { me: Me }) {
           {copied ? <Check className="size-3 text-good" /> : <Copy className="size-3" />}
         </button>
       </div>
-    </section>
+    </MenuItem>
   );
 }

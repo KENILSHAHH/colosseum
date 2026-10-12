@@ -1,11 +1,12 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Loader2, LogOut, Plus, ShieldCheck } from "lucide-react";
+import { CalendarClock, Check, Link2, Loader2, LogOut, Plus, ShieldCheck, UserRound, Wallet } from "lucide-react";
 import { useState } from "react";
 import { api, short, usd, type Me, type Permission } from "@/lib/api";
 import { useLinkedWallet } from "@/lib/linkedWallet";
 import { DepositPanel } from "./DepositPanel";
+import { MenuItem } from "./MenuItem";
 import type { useSession } from "@/lib/session";
 
 interface Guard { id: string; venue: string; params: Record<string, any>; status: string; lastValue: number | null; lastCheck: string | null }
@@ -24,7 +25,7 @@ export function Sidebar({ session, onNewChat }: { session: ReturnType<typeof use
         <Plus className="size-4" /> New chat
       </button>
 
-      <div className="flex-1 space-y-5 overflow-y-auto px-3 pb-4">
+      <div className="flex-1 space-y-1 overflow-y-auto px-3 pb-4">
         {!session.authenticated && (
           <Section title="Account">
             <button disabled={!session.ready} onClick={session.signIn} className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-black hover:brightness-110 disabled:opacity-60">
@@ -55,17 +56,15 @@ export function Sidebar({ session, onNewChat }: { session: ReturnType<typeof use
 
         {signedIn && me && (
           <>
-            <Section title="Signed in as">
-              <div className="flex items-center justify-between">
-                <span className="min-w-0">
-                  {session.label && <span className="block truncate text-[12.5px]">{session.label}</span>}
-
-                </span>
-                <button onClick={session.signOut} title="Sign out" className="text-faint hover:text-ink">
-                  <LogOut className="size-3.5" />
-                </button>
-              </div>
-            </Section>
+            <div className="flex items-center gap-3 px-2.5 py-2">
+              <span className="grid size-7 shrink-0 place-items-center rounded-md bg-raised text-dim">
+                <UserRound className="size-4" />
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[13px] text-dim">{session.label ?? "Signed in"}</span>
+              <button onClick={session.signOut} title="Sign out" className="text-faint hover:text-ink">
+                <LogOut className="size-3.5" />
+              </button>
+            </div>
             <Balances />
             <DepositPanel me={me} />
             <LinkedWallet me={me} />
@@ -95,17 +94,17 @@ function Balances() {
   const { data } = useQuery({ queryKey: ["balances"], queryFn: () => api<Balance>("/billing/balances"), refetchInterval: 30_000 });
   const [copied, setCopied] = useState(false);
   return (
-    <Section title="Wallet">
+    <MenuItem icon={Wallet} label="Wallet" value={!data ? "…" : data.usd === null ? "not read" : usd(data.usd)}>
       <button
         disabled={!data}
         onClick={async () => { await navigator.clipboard.writeText(data!.address); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
         title={data ? `Copy ${data.address}` : undefined}
-        className="flex w-full items-center justify-between rounded-md px-1 py-1 hover:bg-raised"
+        className="flex w-full items-center justify-between gap-2 rounded-md py-1 font-mono text-[11.5px] text-faint hover:text-dim"
       >
-        <span className="flex items-center gap-1.5 font-mono text-[11.5px] text-faint">{data ? (copied ? <Check className="size-3 text-good" /> : short(data.address)) : "…"}</span>
-        <span className="font-mono text-[15px] tabular-nums">{!data ? "" : data.usd === null ? "not read" : usd(data.usd)}</span>
+        <span>{data ? short(data.address) : "…"}</span>
+        {copied ? <Check className="size-3 text-good" /> : <span>Copy</span>}
       </button>
-    </Section>
+    </MenuItem>
   );
 }
 
@@ -117,16 +116,16 @@ function LinkedWallet({ me }: { me: Me }) {
 
   if (!me.linkedWallet)
     return (
-      <Section title="Your wallet">
+      <MenuItem icon={Link2} label="Your wallet" value={me.linkedWallet ? short(me.linkedWallet) : undefined}>
         <button disabled={wallet.busy !== null} onClick={wallet.link} className="flex w-full items-center justify-center gap-2 rounded-lg border border-line px-3 py-2 text-[13px] text-dim hover:bg-raised hover:text-ink disabled:opacity-60">
           {wallet.busy === "link" && <Loader2 className="size-3.5 animate-spin" />} Link existing wallet
         </button>
         {wallet.error && <p className="mt-2 text-[11.5px] text-bad">{wallet.error}</p>}
-      </Section>
+      </MenuItem>
     );
 
   return (
-    <Section title="Your wallet">
+    <MenuItem icon={Link2} label="Your wallet" value={me.linkedWallet ? short(me.linkedWallet) : undefined}>
       <div className="flex items-center justify-between">
         <span className="font-mono text-[12.5px]" title={me.linkedWallet}>{short(me.linkedWallet)}</span>
         <button onClick={wallet.unlink} className="text-[11.5px] text-faint hover:text-bad" title="Unlink the wallet and remove its permissions">
@@ -154,7 +153,7 @@ function LinkedWallet({ me }: { me: Me }) {
         </div>
       ))}
       {wallet.error && <p className="mt-2 text-[11.5px] text-bad">{wallet.error}</p>}
-    </Section>
+    </MenuItem>
   );
 }
 
@@ -173,7 +172,7 @@ function Jobs() {
   const { data } = useQuery({ queryKey: ["jobs"], queryFn: () => api<Job[]>("/jobs"), refetchInterval: 10_000 });
   const color: Record<string, string> = { active: "text-good", running: "text-warn", done: "text-dim", failed: "text-bad", cancelled: "text-faint", expired: "text-faint" };
   return (
-    <Section title="Scheduled jobs">
+    <MenuItem icon={CalendarClock} label="Scheduled jobs" badge={data?.filter((j) => j.status === "active").length}>
       {!data ? (
         <p className="text-[12px] text-faint">…</p>
       ) : data.length === 0 ? (
@@ -200,7 +199,7 @@ function Jobs() {
           </div>
         ))
       )}
-    </Section>
+    </MenuItem>
   );
 }
 
@@ -208,9 +207,9 @@ function Guards() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["guards"], queryFn: () => api<Guard[]>("/guards"), refetchInterval: 5_000 });
   const active = (data ?? []).filter((g) => g.status === "active" || g.status === "triggered");
-  if (active.length === 0) return null;
   return (
-    <Section title="Liquidation guards">
+    <MenuItem icon={ShieldCheck} label="Liquidation guards" badge={active.length}>
+      {active.length === 0 && <p className="text-[12px] leading-snug text-faint">No guards. Ask the agent to protect a position from liquidation.</p>}
       {active.map((g) => (
         <div key={g.id} className="flex items-start gap-2 py-1 text-[12.5px]">
           <ShieldCheck className={`mt-0.5 size-3.5 shrink-0 ${g.status === "triggered" ? "text-warn" : "text-good"}`} />
@@ -225,6 +224,6 @@ function Guards() {
           </button>
         </div>
       ))}
-    </Section>
+    </MenuItem>
   );
 }
