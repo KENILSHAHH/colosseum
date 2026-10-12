@@ -153,3 +153,30 @@ export async function openOrders(address: string) {
   const orders = await postJson<{ coin: string; oid: number; side: string; sz: string; limitPx: string; orderType: string; triggerPx: string; isTrigger: boolean; reduceOnly: boolean; triggerCondition: string }[]>(`${hl.HL_API}/info`, { type: "frontendOpenOrders", user: address });
   return orders.map((o) => ({ coin: o.coin, orderId: o.oid, side: o.side === "B" ? "buy" : "sell", size: o.sz, type: o.orderType, triggerPx: o.isTrigger ? o.triggerPx : null, triggerCondition: o.triggerCondition, reduceOnly: o.reduceOnly, limitPx: o.limitPx }));
 }
+
+/** A Hyperliquid spot pair such as "XAUT0/USDC" or "HYPE", with its asset id (10000 + index), price and lot size. */
+export async function spotMarket(pair: string) {
+  const [meta, ctxs] = await postJson<[{ tokens: { index: number; name: string; szDecimals: number }[]; universe: { index: number; name: string; tokens: [number, number] }[] }, { markPx: string; dayNtlVlm: string }[]]>(`${hl.HL_API}/info`, { type: "spotMetaAndAssetCtxs" });
+  const want = pair.toUpperCase().includes("/") ? pair.toUpperCase() : `${pair.toUpperCase()}/USDC`;
+  const names = (u: { tokens: [number, number] }) => `${meta.tokens[u.tokens[0]]!.name}/${meta.tokens[u.tokens[1]]!.name}`.toUpperCase();
+  const u = meta.universe.find((x) => names(x) === want || x.name.toUpperCase() === want);
+  if (!u) throw new Error(`Hyperliquid has no spot pair ${want}.`);
+  const base = meta.tokens[u.tokens[0]]!;
+  return { pair: names(u), asset: 10_000 + u.index, coin: u.name, szDecimals: base.szDecimals, markPx: Number(ctxs[u.index]!.markPx) };
+}
+
+/** Buy or sell on a Hyperliquid spot pair with one IOC order. Minimum 10 USD of value; the size rounds down to the lot. */
+export async function executeSpotOrder(userId: string, args: { pair: string; side: "buy" | "sell"; usd: number; slippageBps?: number }) {
+  const m = await spotMarket(args.pair);
+  const size = Math.floor((args.usd / m.markPx) * 10 ** m.szDecimals) / 10 ** m.szDecimals;
+  if (size * m.markPx < 10) throw new Error(`The order is ${(size * m.markPx).toFixed(2)} USD after rounding to the lot of ${10 ** -m.szDecimals}. Hyperliquid needs at least 10 USD.`);
+  const slip = (args.slippageBps ?? 100) / 10_000;
+  const px = m.markPx * (args.side === "buy" ? 1 + slip : 1 - slip);
+  // Spot prices: 5 significant figures and at most 8 - szDecimals decimals.
+  const limit = Number(Number(px.toPrecision(5)).toFixed(Math.max(0, 8 - m.szDecimals))).toString();
+  const client = await agentClient(userId);
+  const res = await client.order({ orders: [{ a: m.asset, b: args.side === "buy", p: limit, s: size.toFixed(m.szDecimals), r: false, t: { limit: { tif: "Ioc" } } }], grouping: "na" });
+  const status = res.response.data.statuses[0] as OrderStatus;
+  if (!status?.filled) throw new Error(`The spot order did not fill: ${status?.error ?? JSON.stringify(status)}`);
+  return { pair: m.pair, side: args.side, size: status.filled.totalSz, avgPx: status.filled.avgPx, orderId: status.filled.oid };
+}

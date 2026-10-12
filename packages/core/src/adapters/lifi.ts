@@ -192,3 +192,30 @@ export async function depositTransfer(args: { chainId: number; symbol: string; a
       : { to: token.address, data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [args.toAddress as Address, amount] }), value: "0x0" };
   return { chainId: args.chainId, chainName: chain.name, symbol: token.symbol, approval: null, transaction, expectedOusd: null, etaSeconds: null };
 }
+
+/** A token by symbol or address on a chain, from LI.FI. */
+export async function resolveToken(chainId: number, token: string) {
+  const t = await getJson<{ address: string; symbol: string; decimals: number; priceUSD?: string }>(`${LIFI}/token?chain=${chainId}&token=${token === "native" ? NATIVE : token}`);
+  return { address: t.address as Address, symbol: t.symbol, decimals: t.decimals, priceUsd: Number(t.priceUSD ?? 0) || null };
+}
+
+/**
+ * A swap on one chain or a route across chains for any token LI.FI knows (jumper.xyz routes), from `from` to `to`.
+ * Returns the calls to send on the source chain: the approval when one is needed, then the route.
+ */
+/** `exchanges` limits the route to these LI.FI exchange keys (for example on a local fork, where a signed RFQ quote fails). */
+export async function routeTransactions(args: { fromChainId: number; toChainId: number; fromToken: string; toToken: string; amount: string; from: string; to: string; slippage?: number; exchanges?: string[] }) {
+  const [inTok, outTok] = await Promise.all([resolveToken(args.fromChainId, args.fromToken), resolveToken(args.toChainId, args.toToken)]);
+  const amount = parseUnits(args.amount, inTok.decimals);
+  if (amount <= 0n) throw new Error("The amount must be above zero.");
+  const q = await getJson<LifiQuote>(`${LIFI}/quote?${new URLSearchParams({ fromChain: String(args.fromChainId), toChain: String(args.toChainId), fromToken: inTok.address, toToken: outTok.address, fromAmount: amount.toString(), fromAddress: args.from, toAddress: args.to, integrator: INTEGRATOR, slippage: String(args.slippage ?? 0.005), ...(args.exchanges ? { allowExchanges: args.exchanges.join(",") } : {}) })}`);
+  const calls: { to: Address; data: Hex; value: string; description: string }[] = [];
+  if (inTok.address !== NATIVE && q.estimate.approvalAddress) {
+    const chain = await viemChain(args.fromChainId);
+    const allowance = await createPublicClient({ chain, transport: http() }).readContract({ address: inTok.address, abi: erc20Abi, functionName: "allowance", args: [args.from as Address, q.estimate.approvalAddress as Address] });
+    if (allowance < amount) calls.push({ to: inTok.address, data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [q.estimate.approvalAddress as Address, amount] }), value: "0", description: `Approve ${inTok.symbol}` });
+  }
+  const outAmount = Number(formatUnits(BigInt(q.estimate.toAmount), outTok.decimals));
+  calls.push({ to: q.transactionRequest.to, data: q.transactionRequest.data, value: BigInt(q.transactionRequest.value ?? 0).toString(), description: `${args.fromChainId === args.toChainId ? "Swap" : "Route"} ${args.amount} ${inTok.symbol} to about ${outAmount.toPrecision(6)} ${outTok.symbol} via ${q.tool}` });
+  return { calls, tool: q.tool, inToken: inTok, outToken: outTok, outAmount, minOut: Number(formatUnits(BigInt(q.estimate.toAmountMin), outTok.decimals)), usdIn: inTok.priceUsd ? Number(args.amount) * inTok.priceUsd : null, etaSeconds: q.estimate.executionDuration ?? null };
+}

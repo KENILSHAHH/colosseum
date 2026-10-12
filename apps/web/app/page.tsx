@@ -64,6 +64,8 @@ const TOOL_LABELS: Record<string, string> = {
   hl_set_tpsl: "Set stop-loss / take-profit",
   hl_open_orders: "Read open orders",
   hl_cancel_order: "Cancel order",
+  swap: "Swap",
+  hl_spot_order: "Hyperliquid spot order",
   linked_wallet_overview: "Read your wallet",
   linked_wallet_request_permission: "Ask for a permission",
   linked_wallet_send_transactions: "Send from your wallet",

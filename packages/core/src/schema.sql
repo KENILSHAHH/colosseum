@@ -188,3 +188,9 @@ create table if not exists usage_snapshots (
   cost_usd    numeric not null,
   primary key (session_id, model)
 );
+
+-- A repeated job: it waits repeat_seconds after each run, until it ran repeat_times times.
+alter table jobs add column if not exists repeat_seconds integer;
+alter table jobs add column if not exists repeat_times integer;
+alter table jobs add column if not exists runs_done integer not null default 0;
+alter table jobs add column if not exists not_before timestamptz;

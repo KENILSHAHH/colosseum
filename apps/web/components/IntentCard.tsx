@@ -12,6 +12,8 @@ const TITLES: Record<string, string> = {
   job_create: "Scheduled job",
   hl_tpsl: "Stop-loss / take-profit",
   hl_cancel_order: "Cancel order",
+  hl_spot_order: "Hyperliquid spot order",
+  hl_deposit: "Deposit to Hyperliquid",
   bridge: "Bridge",
   evm_transactions: "Sign transactions",
 };

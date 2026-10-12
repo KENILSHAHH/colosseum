@@ -127,9 +127,13 @@ async function buildSponsored(userId: string, chain: ChainKey, txs: EvmTx[], opt
  * result (for example a swap route that fails when the caller is an account with code), so sponsored chains use this.
  */
 export async function simulateSponsored(userId: string, chain: ChainKey, txs: EvmTx[]): Promise<{ ok: boolean; gas: string | null; error: string | null }> {
-  const { manager, reader, relayer, data } = await buildSponsored(userId, chain, txs);
+  const { owner, manager, implementation, reader, relayer, data } = await buildSponsored(userId, chain, txs);
+  // A wallet that is not upgraded yet gets the upgrade with its first sponsored transaction. The simulation sets that code first.
+  const code = await reader.getCode({ address: owner.address });
+  const upgraded = code?.toLowerCase() === `0xef0100${implementation.slice(2).toLowerCase()}`;
+  const stateOverride = upgraded ? undefined : [{ address: owner.address, code: `0xef0100${implementation.slice(2)}` as Hex }];
   try {
-    const gas = await withRetry(() => reader.estimateGas({ account: relayer.account, to: manager, data }));
+    const gas = await withRetry(() => reader.estimateGas({ account: relayer.account, to: manager, data, stateOverride }));
     return { ok: true, gas: gas.toString(), error: null };
   } catch (err) {
     return { ok: false, gas: null, error: (err instanceof Error ? err.message : String(err)).split("\n").slice(0, 3).join(" ").slice(0, 400) };
