@@ -194,3 +194,15 @@ alter table jobs add column if not exists repeat_seconds integer;
 alter table jobs add column if not exists repeat_times integer;
 alter table jobs add column if not exists runs_done integer not null default 0;
 alter table jobs add column if not exists not_before timestamptz;
+
+-- The memory of the agent: lessons it learned (fixes, routes, facts), for all users or for one user.
+create table if not exists agent_memory (
+  id         bigserial primary key,
+  user_id    text not null,
+  scope      text not null,   -- global | user
+  topic      text not null,
+  lesson     text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists agent_memory_scope on agent_memory(scope, created_at desc);
+create index if not exists agent_memory_user on agent_memory(user_id, created_at desc);

@@ -11,6 +11,7 @@ import { llmSessionToken } from "../llmProxy";
 import { allToolNames, buildTools, SERVER_NAME, type WalletRequest } from "../tools/index";
 import { getOrCreateWallet } from "../wallet";
 import type { Permission } from "../delegation";
+import { memoryBlock } from "../memory";
 import { CHAT_SYSTEM_PROMPT } from "./prompts";
 
 export type AgentEvent =
@@ -205,7 +206,8 @@ export async function* runChatAgent(args: RunArgs): AsyncGenerator<AgentEvent> {
   const inbox: RunInbox = { queue: [], closed: false, wake: null };
   inboxes.set(args.userId, inbox);
   async function* input(): AsyncGenerator<SDKUserMessage> {
-    yield userMessage(args.prompt);
+    // A new chat starts with the memory. A resumed chat has it already.
+    yield userMessage(args.resume ? args.prompt : `${await memoryBlock(args.userId)}${args.prompt}`);
     for (;;) {
       while (inbox.queue.length) yield userMessage(inbox.queue.shift()!, "next");
       if (inbox.closed) return;

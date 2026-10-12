@@ -16,6 +16,7 @@ import * as delegation from "../delegation";
 import { executeIntent } from "../executors/index";
 import { createIntent, transition, type Intent, type IntentKind } from "../intents";
 import * as jobs from "../jobs";
+import * as memory from "../memory";
 import * as flash from "../flashExecutor";
 import { buildAaveV4Unwind } from "../unwind";
 import { ensureUpgraded, isSponsored, simulateSponsored } from "../sponsor";
@@ -445,6 +446,16 @@ export function buildTools(ctx: ToolContext) {
         }, r.usdIn ?? 0);
       })),
 
+    tool("memory_save", "Save a lesson for later chats. Save one each time you solve an error or find a working route, so the next chat does not repeat the mistake, and each time the user states a preference. scope=global for a fact about a venue, a tool or a fix that helps every user (never personal data). scope=user for this user. One lesson, short and concrete: the problem, the cause, the fix. replaces = id of a lesson it corrects.",
+      { scope: z.enum(["global", "user"]), topic: z.string().min(2).max(80), lesson: z.string().min(10).max(600), replaces: z.number().int().optional() },
+      run((a) => memory.saveLesson(ctx.userId, a))),
+
+    tool("memory_recall", "Search the saved lessons by topic or word. The newest lessons are already in the first message of the chat; use this for older ones.",
+      { topic: z.string().optional() }, run(({ topic }) => memory.recallLessons(ctx.userId, topic)), read),
+
+    tool("memory_forget", "Delete a saved lesson that is wrong or out of date, by id.",
+      { id: z.number().int() }, run(({ id }) => memory.forgetLesson(ctx.userId, id))),
+
     tool("hl_action", `Sign and send ANY Hyperliquid exchange action from the user's Hyperliquid account, by SDK method name and parameters. Use it for everything the typed Hyperliquid tools do not cover, for example: usdClassTransfer { amount: "10", toPerp: false } moves USDC from perps to spot (toPerp true: spot to perps); spotSend; usdSend; withdraw3 (to Arbitrum); sendAsset (between dexes); twapOrder; modify; updateIsolatedMargin; vaultTransfer; createSubAccount. Parameters follow the exchange endpoint docs (search them with the Hyperliquid docs tool). Not available: ${HL_BLOCKED_ACTIONS.join(", ")} (they hand the account to another address).`,
       { method: z.string(), params: z.record(z.string(), z.unknown()), summary: z.string().min(5), usdValue: z.number().min(0) },
       run(async (a) => {
@@ -540,7 +551,7 @@ export function buildTools(ctx: ToolContext) {
 
 export const TOOL_NAMES = [
   "wallet_overview", "rates_compare", "hl_markets", "hl_account", "hl_outcomes", "sol_quote", "bridge_quote", "bridge_status", "aave_account", "aave_v4_markets", "aave_v4_account", "evm_simulate",
-  "hl_open_position", "hl_close_position", "hl_set_tpsl", "hl_open_orders", "hl_cancel_order", "aave_supply_borrow", "bridge", "evm_send_transactions", "guard_register_aave", "aave_v4_action", "hl_deposit", "job_schedule", "job_list", "job_cancel", "flash_run", "aave_v4_unwind", "swap", "hl_spot_order", "hl_action", "hl_info",
+  "hl_open_position", "hl_close_position", "hl_set_tpsl", "hl_open_orders", "hl_cancel_order", "aave_supply_borrow", "bridge", "evm_send_transactions", "guard_register_aave", "aave_v4_action", "hl_deposit", "job_schedule", "job_list", "job_cancel", "flash_run", "aave_v4_unwind", "swap", "hl_spot_order", "hl_action", "hl_info", "memory_save", "memory_recall", "memory_forget",
   "linked_wallet_overview", "linked_wallet_ask_to_sign", "linked_wallet_request_permission", "linked_wallet_permission_context", "linked_wallet_send_transactions",
 ];
 export const allToolNames = () => TOOL_NAMES.map((t) => `mcp__${SERVER_NAME}__${t}`);
