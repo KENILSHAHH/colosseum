@@ -10,6 +10,8 @@ const TITLES: Record<string, string> = {
   aave_supply_borrow: "Supply and borrow",
   guard_create: "Liquidation Guard",
   job_create: "Scheduled job",
+  hl_tpsl: "Stop-loss / take-profit",
+  hl_cancel_order: "Cancel order",
   bridge: "Bridge",
   evm_transactions: "Sign transactions",
 };

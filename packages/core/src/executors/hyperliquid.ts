@@ -114,3 +114,42 @@ export async function executeAddMargin(userId: string, args: { coin: string; usd
   await client.updateIsolatedMargin({ asset: m.assetId, isBuy: true, ntli: Math.round(args.usd * 1e6) });
   return { coin: m.coin, addedUsd: args.usd };
 }
+
+/**
+ * Place a stop-loss or take-profit for an open position: a reduce-only trigger order that Hyperliquid itself keeps and fires.
+ * It fires as a market order when the mark price crosses `triggerPx`. Docs: https://hyperliquid.gitbook.io/hyperliquid-docs/trading/take-profit-and-stop-loss-orders-tp-sl
+ */
+export async function executeTpsl(userId: string, address: string, args: { coin: string; kind: "sl" | "tp"; triggerPx: number; fraction: number }) {
+  const market = await hl.getMarket(args.coin);
+  const pos = (await hl.getAccount(address, [market.dex])).positions.find((x) => x.coin === market.coin);
+  if (!pos) throw new Error(`No open position in ${market.coin}.`);
+  const isLong = pos.size > 0;
+  const size = hl.roundSize(Math.abs(pos.size) * args.fraction, market.szDecimals);
+  if (Number(size) <= 0) throw new Error("The order size rounds to zero.");
+  const trigger = hl.roundPrice(args.triggerPx, market.szDecimals);
+  // The closing side sells a long and buys a short. The limit of the market fill allows 10% of slippage from the trigger.
+  const limit = hl.roundPrice(args.triggerPx * (isLong ? 0.9 : 1.1), market.szDecimals);
+  const client = await agentClient(userId);
+  const res = await client.order({
+    orders: [{ a: market.assetId, b: !isLong, p: limit, s: size, r: true, t: { trigger: { isMarket: true, triggerPx: trigger, tpsl: args.kind } } }],
+    grouping: "na",
+  });
+  const status = res.response.data.statuses[0] as OrderStatus | string;
+  if (typeof status === "object" && status?.error) throw new Error(`Hyperliquid refused the order: ${status.error}`);
+  const oid = typeof status === "object" ? (status.resting?.oid ?? status.filled?.oid ?? null) : null;
+  return { coin: market.coin, kind: args.kind, triggerPx: trigger, size, side: isLong ? "sell" : "buy", orderId: oid, status, explorer: `https://app.hyperliquid.xyz/explorer/address/${address}` };
+}
+
+/** Cancel an open order (also a stop-loss or a take-profit) by its order id. */
+export async function executeCancel(userId: string, args: { coin: string; orderId: number }) {
+  const market = await hl.getMarket(args.coin);
+  const client = await agentClient(userId);
+  const res = await client.cancel({ cancels: [{ a: market.assetId, o: args.orderId }] });
+  return { coin: market.coin, orderId: args.orderId, status: res.response.data.statuses[0] };
+}
+
+/** Open orders of the account, with the trigger orders (stop-loss and take-profit). */
+export async function openOrders(address: string) {
+  const orders = await postJson<{ coin: string; oid: number; side: string; sz: string; limitPx: string; orderType: string; triggerPx: string; isTrigger: boolean; reduceOnly: boolean; triggerCondition: string }[]>(`${hl.HL_API}/info`, { type: "frontendOpenOrders", user: address });
+  return orders.map((o) => ({ coin: o.coin, orderId: o.oid, side: o.side === "B" ? "buy" : "sell", size: o.sz, type: o.orderType, triggerPx: o.isTrigger ? o.triggerPx : null, triggerCondition: o.triggerCondition, reduceOnly: o.reduceOnly, limitPx: o.limitPx }));
+}

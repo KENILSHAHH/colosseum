@@ -20,6 +20,7 @@ import * as flash from "../flashExecutor";
 import { buildAaveV4Unwind } from "../unwind";
 import { ensureUpgraded, isSponsored, simulateSponsored } from "../sponsor";
 import { getPositions } from "../positions";
+import { openOrders } from "../executors/hyperliquid";
 import { SPONSORED_CHAINS, sponsorEnabled } from "../sponsor";
 import { CHAIN_KEYS, CHAINS, USDC } from "../registry/chains";
 import type { AgentWallet } from "../wallet";
@@ -277,6 +278,30 @@ export function buildTools(ctx: ToolContext) {
         }, a.marginUsd);
       })),
 
+    tool("hl_set_tpsl", "Set a stop-loss (kind=sl) or take-profit (kind=tp) on an open Hyperliquid position. It is a native reduce-only trigger order: Hyperliquid keeps it and fires it as a market order when the mark price crosses triggerPx, with no server or job involved. Use it whenever the user asks for a stop-loss, a stop, a take-profit or a TP/SL on Hyperliquid. A stop of a long must be below the mark price, a stop of a short above it. A stop close to the liquidation price still works, but a fast move can reach liquidation first: say so in one line, then place it.",
+      { coin: z.string(), kind: z.enum(["sl", "tp"]), triggerPx: z.number().positive(), fraction: z.number().gt(0).max(1).default(1).describe("Part of the position. 1 = all") },
+      run(async (a) => {
+        const market = await hl.getMarket(a.coin);
+        const pos = (await hl.getAccount(address, [market.dex])).positions.find((x) => x.coin === market.coin);
+        if (!pos) throw new Error(`No open position in ${a.coin}.`);
+        const isLong = pos.size > 0;
+        const wrongSide = a.kind === "sl" ? (isLong ? a.triggerPx >= pos.markPx : a.triggerPx <= pos.markPx) : (isLong ? a.triggerPx <= pos.markPx : a.triggerPx >= pos.markPx);
+        if (wrongSide) throw new Error(`A ${a.kind === "sl" ? "stop-loss" : "take-profit"} of a ${isLong ? "long" : "short"} must be ${(a.kind === "sl") === isLong ? "below" : "above"} the mark price (${pos.markPx}). It would fire at once.`);
+        const pastLiq = pos.liquidationPx !== null && (isLong ? a.triggerPx <= pos.liquidationPx : a.triggerPx >= pos.liquidationPx);
+        if (a.kind === "sl" && pastLiq) throw new Error(`The stop (${a.triggerPx}) is past the liquidation price (${pos.liquidationPx}). It can never fire. Choose a price between the mark and the liquidation price.`);
+        return act("hl_tpsl", { ...a, coin: market.coin }, {
+          venue: "Hyperliquid", market: market.coin, kind: a.kind === "sl" ? "Stop-loss" : "Take-profit", triggerPx: a.triggerPx, size: Math.abs(pos.size) * a.fraction,
+          markPx: pos.markPx, liquidationPx: pos.liquidationPx, note: "A native trigger order on Hyperliquid. It fires as a market order.",
+        }, Math.abs(pos.positionValue) * a.fraction);
+      })),
+
+    tool("hl_open_orders", "List the open orders of the Hyperliquid account, with stop-loss and take-profit trigger orders and their order ids.",
+      {}, run(() => openOrders(address)), read),
+
+    tool("hl_cancel_order", "Cancel an open Hyperliquid order, a stop-loss or a take-profit, by coin and order id (from hl_open_orders).",
+      { coin: z.string(), orderId: z.number().int() },
+      run(async (a) => act("hl_cancel_order", a, { venue: "Hyperliquid", market: a.coin, orderId: a.orderId, summary: `Cancel order ${a.orderId} on ${a.coin}` }, 0))),
+
     tool("hl_close_position", "Close all or part of an open Hyperliquid position with reduce-only IOC orders.",
       { coin: z.string(), fraction: z.number().gt(0).max(1).describe("1 = full close") },
       run(async (a) => {
@@ -468,7 +493,7 @@ export function buildTools(ctx: ToolContext) {
 
 export const TOOL_NAMES = [
   "wallet_overview", "rates_compare", "hl_markets", "hl_account", "hl_outcomes", "sol_quote", "bridge_quote", "bridge_status", "aave_account", "aave_v4_markets", "aave_v4_account", "evm_simulate",
-  "hl_open_position", "hl_close_position", "aave_supply_borrow", "bridge", "evm_send_transactions", "guard_register_aave", "aave_v4_action", "hl_deposit", "job_schedule", "job_list", "job_cancel", "flash_run", "aave_v4_unwind",
+  "hl_open_position", "hl_close_position", "hl_set_tpsl", "hl_open_orders", "hl_cancel_order", "aave_supply_borrow", "bridge", "evm_send_transactions", "guard_register_aave", "aave_v4_action", "hl_deposit", "job_schedule", "job_list", "job_cancel", "flash_run", "aave_v4_unwind",
   "linked_wallet_overview", "linked_wallet_ask_to_sign", "linked_wallet_request_permission", "linked_wallet_permission_context", "linked_wallet_send_transactions",
 ];
 export const allToolNames = () => TOOL_NAMES.map((t) => `mcp__${SERVER_NAME}__${t}`);

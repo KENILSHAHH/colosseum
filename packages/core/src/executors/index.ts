@@ -9,7 +9,7 @@ import { transition, type Intent } from "../intents";
 import type { ChainKey } from "../registry/chains";
 import { createJob } from "../jobs";
 import { sendTransactions } from "./evm";
-import { executeOpen, executeReduce } from "./hyperliquid";
+import { executeOpen, executeReduce, executeCancel, executeTpsl } from "./hyperliquid";
 
 async function logAction(intent: Intent, chain: string, txHash: string) {
   await sql()`insert into action_log (user_id, intent_id, intent_hash, chain, tx_hash) values (${intent.userId}, ${intent.id}, ${intent.intentHash}, ${chain}, ${txHash})`;
@@ -29,6 +29,10 @@ async function run(intent: Intent, address: string): Promise<Record<string, unkn
       await logAction(intent, "hyperliquid", `close:${sha256Hex(JSON.stringify(res.fills)).slice(0, 16)}`);
       return res;
     }
+    case "hl_tpsl":
+      return executeTpsl(intent.userId, address, { coin: p.coin, kind: p.kind, triggerPx: p.triggerPx, fraction: p.fraction });
+    case "hl_cancel_order":
+      return executeCancel(intent.userId, { coin: p.coin, orderId: p.orderId });
     case "aave_supply_borrow":
     case "bridge":
     case "evm_transactions": {
