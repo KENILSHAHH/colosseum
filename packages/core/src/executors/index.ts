@@ -13,7 +13,7 @@ import { encodeFunctionData, erc20Abi } from "viem";
 import { HL_BRIDGE_ARBITRUM } from "../adapters/hyperliquid";
 import { USDC } from "../registry/chains";
 import { getOrCreateWallet } from "../wallet";
-import { executeOpen, executeReduce, executeCancel, executeSpotOrder, executeTpsl } from "./hyperliquid";
+import { executeOpen, executeReduce, executeCancel, executeHlAction, executeSpotOrder, executeTpsl } from "./hyperliquid";
 
 async function logAction(intent: Intent, chain: string, txHash: string) {
   await sql()`insert into action_log (user_id, intent_id, intent_hash, chain, tx_hash) values (${intent.userId}, ${intent.id}, ${intent.intentHash}, ${chain}, ${txHash})`;
@@ -45,6 +45,8 @@ async function run(intent: Intent, address: string): Promise<Record<string, unkn
       const second = await sendTransactions(intent.userId, "arbitrum", [{ to: usdc, data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [HL_BRIDGE_ARBITRUM, amount] }), value: "0", description: "Deposit to Hyperliquid" }], { legacy: true });
       return { receipts: [...first, ...second], hyperliquidAccount: hlAddress };
     }
+    case "hl_action":
+      return executeHlAction(intent.userId, p.method, p.params);
     case "hl_spot_order":
       return executeSpotOrder(intent.userId, { pair: p.pair, side: p.side, usd: p.usd, slippageBps: p.slippageBps });
     case "hl_cancel_order":

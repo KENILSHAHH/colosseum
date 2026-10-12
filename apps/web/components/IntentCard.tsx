@@ -13,6 +13,7 @@ const TITLES: Record<string, string> = {
   hl_tpsl: "Stop-loss / take-profit",
   hl_cancel_order: "Cancel order",
   hl_spot_order: "Hyperliquid spot order",
+  hl_action: "Hyperliquid action",
   hl_deposit: "Deposit to Hyperliquid",
   bridge: "Bridge",
   evm_transactions: "Sign transactions",

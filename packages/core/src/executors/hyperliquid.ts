@@ -180,3 +180,18 @@ export async function executeSpotOrder(userId: string, args: { pair: string; sid
   if (!status?.filled) throw new Error(`The spot order did not fill: ${status?.error ?? JSON.stringify(status)}`);
   return { pair: m.pair, side: args.side, size: status.filled.totalSz, avgPx: status.filled.avgPx, orderId: status.filled.oid };
 }
+
+/** Hyperliquid actions that hand control of the account to someone else. The general action tool does not sign them. */
+export const HL_BLOCKED_ACTIONS = ["approveAgent", "approveBuilderFee", "convertToMultiSigUser", "linkStakingUser", "cSignerAction", "cValidatorAction"] as const;
+
+/**
+ * Sign and send any Hyperliquid exchange action from the Hyperliquid account, by its SDK method name and parameters.
+ * Examples: usdClassTransfer (perps and spot), spotSend, usdSend, withdraw3, sendAsset, twapOrder, modify, vaultTransfer.
+ * Parameters follow https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/exchange-endpoint.
+ */
+export async function executeHlAction(userId: string, method: string, params: Record<string, unknown>) {
+  if ((HL_BLOCKED_ACTIONS as readonly string[]).includes(method)) throw new Error(`The action ${method} hands control of the account to another address. It is not available.`);
+  const client = (await agentClient(userId)) as unknown as Record<string, (p: unknown) => Promise<unknown>>;
+  if (typeof client[method] !== "function") throw new Error(`Hyperliquid has no action named ${method}.`);
+  return { method, response: await client[method]!.call(client, params) };
+}

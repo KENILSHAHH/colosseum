@@ -20,7 +20,7 @@ import * as flash from "../flashExecutor";
 import { buildAaveV4Unwind } from "../unwind";
 import { ensureUpgraded, isSponsored, simulateSponsored } from "../sponsor";
 import { getPositions } from "../positions";
-import { openOrders, spotMarket } from "../executors/hyperliquid";
+import { HL_BLOCKED_ACTIONS, openOrders, spotMarket } from "../executors/hyperliquid";
 import * as lifi from "../adapters/lifi";
 import { SPONSORED_CHAINS, sponsorEnabled } from "../sponsor";
 import { CHAIN_KEYS, CHAINS, USDC } from "../registry/chains";
@@ -445,6 +445,22 @@ export function buildTools(ctx: ToolContext) {
         }, r.usdIn ?? 0);
       })),
 
+    tool("hl_action", `Sign and send ANY Hyperliquid exchange action from the user's Hyperliquid account, by SDK method name and parameters. Use it for everything the typed Hyperliquid tools do not cover, for example: usdClassTransfer { amount: "10", toPerp: false } moves USDC from perps to spot (toPerp true: spot to perps); spotSend; usdSend; withdraw3 (to Arbitrum); sendAsset (between dexes); twapOrder; modify; updateIsolatedMargin; vaultTransfer; createSubAccount. Parameters follow the exchange endpoint docs (search them with the Hyperliquid docs tool). Not available: ${HL_BLOCKED_ACTIONS.join(", ")} (they hand the account to another address).`,
+      { method: z.string(), params: z.record(z.string(), z.unknown()), summary: z.string().min(5), usdValue: z.number().min(0) },
+      run(async (a) => {
+        if ((HL_BLOCKED_ACTIONS as readonly string[]).includes(a.method)) throw new Error(`${a.method} hands control of the account to another address. It is not available.`);
+        return act("hl_action", { method: a.method, params: a.params }, { venue: "Hyperliquid", action: a.method, summary: a.summary, params: JSON.stringify(a.params).slice(0, 300) }, a.usdValue);
+      })),
+
+    tool("hl_info", "Send any read request to the Hyperliquid info endpoint for the user's Hyperliquid account or the market. Examples: { type: \"spotClearinghouseState\" } (spot balances), { type: \"clearinghouseState\", dex: \"xyz\" }, { type: \"userFills\" }, { type: \"frontendOpenOrders\" }, { type: \"userFunding\", startTime }, { type: \"spotMeta\" }. The user field is filled with the Hyperliquid account when you leave it out.",
+      { request: z.record(z.string(), z.unknown()) },
+      run(async ({ request }) => {
+        const body = { ...request, ...(request.user ? {} : { user: hlAddress }) };
+        const res = await fetch("https://api.hyperliquid.xyz/info", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+        const text = await res.text();
+        return { status: res.status, body: text.length > 20_000 ? `${text.slice(0, 20_000)}… (cut)` : JSON.parse(text) };
+      }), read),
+
     tool("hl_spot_order", "Buy or sell on a Hyperliquid spot pair (for example XAUT0/USDC for gold, UBTC/USDC, HYPE/USDC) with one IOC order from the Hyperliquid account. Hyperliquid needs at least 10 USD and one lot per order.",
       { pair: z.string(), side: z.enum(["buy", "sell"]), usd: z.number().positive(), slippageBps: z.number().int().min(1).max(500).optional() },
       run(async (a) => {
@@ -524,7 +540,7 @@ export function buildTools(ctx: ToolContext) {
 
 export const TOOL_NAMES = [
   "wallet_overview", "rates_compare", "hl_markets", "hl_account", "hl_outcomes", "sol_quote", "bridge_quote", "bridge_status", "aave_account", "aave_v4_markets", "aave_v4_account", "evm_simulate",
-  "hl_open_position", "hl_close_position", "hl_set_tpsl", "hl_open_orders", "hl_cancel_order", "aave_supply_borrow", "bridge", "evm_send_transactions", "guard_register_aave", "aave_v4_action", "hl_deposit", "job_schedule", "job_list", "job_cancel", "flash_run", "aave_v4_unwind", "swap", "hl_spot_order",
+  "hl_open_position", "hl_close_position", "hl_set_tpsl", "hl_open_orders", "hl_cancel_order", "aave_supply_borrow", "bridge", "evm_send_transactions", "guard_register_aave", "aave_v4_action", "hl_deposit", "job_schedule", "job_list", "job_cancel", "flash_run", "aave_v4_unwind", "swap", "hl_spot_order", "hl_action", "hl_info",
   "linked_wallet_overview", "linked_wallet_ask_to_sign", "linked_wallet_request_permission", "linked_wallet_permission_context", "linked_wallet_send_transactions",
 ];
 export const allToolNames = () => TOOL_NAMES.map((t) => `mcp__${SERVER_NAME}__${t}`);

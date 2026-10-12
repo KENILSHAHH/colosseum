@@ -66,6 +66,8 @@ const TOOL_LABELS: Record<string, string> = {
   hl_cancel_order: "Cancel order",
   swap: "Swap",
   hl_spot_order: "Hyperliquid spot order",
+  hl_action: "Hyperliquid action",
+  hl_info: "Read Hyperliquid",
   linked_wallet_overview: "Read your wallet",
   linked_wallet_request_permission: "Ask for a permission",
   linked_wallet_send_transactions: "Send from your wallet",
