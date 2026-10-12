@@ -5,8 +5,8 @@ import { verifyMessage } from "viem";
 import { z } from "zod";
 import { Receipt } from "mppx";
 import {
-  checkBudget, config, ensureUser, executeIntent, getIntent, getOrCreateWallet, getPositions, isExpired, listIntents,
-  migrate, privyEnabled, privySignIn, promptPriceUsd, recordCharge, runChatAgent, signToken, sql, startLlmProxy, transition, updateWalletSettings, verifyToken, withdrawToOwner, type AgentEvent,
+  checkBudget, config, ensureUser, executeIntent, getDepositWallet, getIntent, getOrCreateWallet, getPositions, isExpired, listDeposits, listIntents,
+  migrate, privyEnabled, startDepositSweeper, syncDepositWallet, walletAccount, privySignIn, promptPriceUsd, recordCharge, runChatAgent, signToken, sql, startLlmProxy, transition, updateWalletSettings, verifyToken, withdrawToOwner, type AgentEvent,
 } from "@app/core";
 import { delegation, lifi } from "@app/core";
 import { cancelGuard, listGuards } from "@app/core/guards";
@@ -56,7 +56,7 @@ const auth = async (c: Context<Env>, next: () => Promise<void>) => {
   c.set("userId", claims.sub);
   await next();
 };
-for (const p of ["/me", "/wallet", "/wallet/*", "/positions", "/chat", "/intents", "/intents/*", "/guards", "/guards/*", "/billing", "/billing/*", "/permissions", "/permissions/*"]) app.use(p, auth);
+for (const p of ["/me", "/wallet", "/wallet/*", "/positions", "/chat", "/intents", "/intents/*", "/guards", "/guards/*", "/billing", "/billing/*", "/permissions", "/permissions/*", "/deposit", "/deposit/*"]) app.use(p, auth);
 
 // ── Account and agent wallet ───────────────────────────────────────────────
 app.get("/me", async (c) => {
@@ -66,6 +66,7 @@ app.get("/me", async (c) => {
     address: userId,
     wallet: await getOrCreateWallet(userId),
     linkedWallet: await delegation.getLinkedWallet(userId),
+    deposit: await getDepositWallet(userId).then(({ address, enabled, signerId }) => ({ address, enabled, signerId })),
     pricing: { promptUsd: promptPriceUsd(), actionUsd: cfg.PRICE_ACTION_USD, guardMinuteUsd: cfg.PRICE_GUARD_MINUTE_USD },
     mppEnabled: mppEnabled(),
   });
@@ -243,7 +244,21 @@ app.get("/billing/assets", async (c) => c.json(await lifi.walletAssets((await ge
 // Convert one token of the agent wallet to OUSD on Tempo. The destination is the same agent wallet.
 app.post("/billing/topup", async (c) => {
   const body = z.object({ chainId: z.number().int().positive(), token: z.string().regex(/^0x[0-9a-fA-F]{40}$/) }).parse(await c.req.json());
-  return c.json(await lifi.convertToOusd(c.get("userId"), body));
+  const userId = c.get("userId");
+  return c.json(await lifi.convertToOusd(await walletAccount(userId), { ...body, toAddress: (await getOrCreateWallet(userId)).address }));
+});
+
+// ── Deposits ───────────────────────────────────────────────────────────────
+// The Privy wallet of the user is the deposit address. The converter moves each token that arrives there to OUSD on Tempo.
+// The browser calls this route after the user added the server signer to the Privy wallet.
+app.post("/deposit/enable", async (c) => c.json(await syncDepositWallet(c.get("userId")).then(({ address, enabled, signerId }) => ({ address, enabled, signerId }))));
+app.get("/deposit/history", async (c) => c.json(await listDeposits(c.get("userId"))));
+app.get("/deposit/options", (c) => c.json({ chains: lifi.DEPOSIT_CHAINS, symbols: lifi.DEPOSIT_SYMBOLS }));
+
+// A direct deposit from an own wallet of the user: any listed token to OUSD on Tempo, delivered to the agent wallet. The browser signs.
+app.post("/deposit/quote", async (c) => {
+  const body = z.object({ chainId: z.number().int().refine((n) => (lifi.DEPOSIT_CHAINS as readonly number[]).includes(n)), symbol: z.enum(lifi.DEPOSIT_SYMBOLS), amount: z.string().regex(/^\d+(\.\d+)?$/), from: Address }).parse(await c.req.json());
+  return lifi.depositQuote({ ...body, toAddress: (await getOrCreateWallet(c.get("userId"))).address }).then((q) => c.json(q), badRequest);
 });
 
 app.onError((err, c) => {
@@ -254,5 +269,6 @@ app.onError((err, c) => {
 
 await migrate();
 startLlmProxy();
+const sweeper = startDepositSweeper();
 serve({ fetch: app.fetch, port: config().API_PORT });
-console.log(`API on http://localhost:${config().API_PORT}  (MPP ${mppEnabled() ? "on, Tempo mainnet" : "off"})`);
+console.log(`API on http://localhost:${config().API_PORT}  (MPP ${mppEnabled() ? "on, Tempo mainnet" : "off"}, deposit converter ${sweeper ? "on" : "off"})`);

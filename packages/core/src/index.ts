@@ -3,6 +3,7 @@ export * from "./db";
 export * from "./crypto";
 export * from "./privy";
 export * as delegation from "./delegation";
+export * from "./deposits";
 export * from "./intents";
 export * from "./llmProxy";
 export * from "./billing/pricing";

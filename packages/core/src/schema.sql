@@ -5,6 +5,28 @@ create table if not exists users (
 );
 alter table users add column if not exists privy_did text unique;  -- Privy user id (did:privy:...)
 alter table users add column if not exists linked_wallet text;     -- the user's own wallet, proven with a signature
+-- The Privy wallet of the user is the deposit address. Tokens that arrive there are converted to OUSD on Tempo.
+alter table users add column if not exists deposit_wallet text;
+alter table users add column if not exists privy_wallet_id text;
+alter table users add column if not exists deposit_signer boolean not null default false;  -- the user added the server signer
+
+-- One row per conversion attempt of a deposit.
+create table if not exists deposits (
+  id            bigserial primary key,
+  user_id       text not null references users(id),
+  chain_id      integer not null,
+  chain_name    text not null,
+  token         text not null,
+  symbol        text not null,
+  amount        numeric not null,
+  usd           numeric,
+  status        text not null,                  -- converted | needs_gas | failed
+  hash          text,
+  expected_ousd numeric,
+  detail        text,
+  created_at    timestamptz not null default now()
+);
+create index if not exists deposits_user on deposits(user_id, created_at desc);
 
 -- Permissions the user signed on the linked wallet (EIP-7702 delegations to the agent wallet).
 create table if not exists delegations (

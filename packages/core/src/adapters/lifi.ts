@@ -1,7 +1,6 @@
 // LI.FI, the routing API behind jumper.xyz. Docs: https://docs.li.fi/api-reference/introduction
 // It moves any token on any supported EVM chain to OUSD on Tempo. The agent wallet signs the transactions.
-import { createPublicClient, createWalletClient, defineChain, erc20Abi, formatUnits, http, type Address, type Hex } from "viem";
-import { walletAccount } from "../wallet";
+import { createPublicClient, createWalletClient, defineChain, erc20Abi, formatUnits, http, parseUnits, type Account, type Address, type Hex } from "viem";
 import { getJson } from "./http";
 
 const LIFI = "https://li.quest/v1";
@@ -12,8 +11,13 @@ export const TEMPO_ID = 4217;
 export const OUSD_TEMPO = "0x20c0000000000000000000006a37DA5C996874BE";
 /** Assets below this value are not shown. A route for them costs more than it moves. */
 const MIN_ASSET_USD = 0.25;
-/** Part of a native balance that stays in the wallet for gas. */
-const NATIVE_KEEP = 0.1;
+/** A native token keeps this many times the gas cost of the route in the wallet. */
+const GAS_RESERVE_FACTOR = 3n;
+
+/** Thrown when the wallet has no native token to pay the gas of a route. */
+export class NeedsGasError extends Error {}
+/** Thrown when the balance is zero or too small to move. Not a failure: there is nothing to do. */
+export class NothingToConvertError extends Error {}
 
 interface LifiChain { id: number; name: string; coin: string; metamask: { rpcUrls: string[]; blockExplorerUrls: string[]; nativeCurrency: { name: string; symbol: string; decimals: number } } }
 interface LifiBalance { address: string; symbol: string; decimals: number; amount: string; chainId: number; verificationStatus?: string }
@@ -41,7 +45,7 @@ async function viemChain(chainId: number) {
 }
 
 /** Every token of the address that LI.FI can route, with a USD value. Tempo is not a source: the destination is there. */
-export async function walletAssets(address: string): Promise<WalletAsset[]> {
+export async function walletAssets(address: string, minUsd = MIN_ASSET_USD): Promise<WalletAsset[]> {
   const [res, known] = await Promise.all([getJson<{ balances: Record<string, LifiBalance[]> }>(`${LIFI}/wallets/${address}/balances`), chains()]);
   const held = Object.values(res.balances).flat().filter((b) => BigInt(b.amount) > 0n && Number(b.chainId) !== TEMPO_ID && b.verificationStatus !== "unverified" && known.has(Number(b.chainId)));
   const assets = await Promise.all(
@@ -51,34 +55,47 @@ export async function walletAssets(address: string): Promise<WalletAsset[]> {
       return { chainId: Number(b.chainId), chainName: known.get(Number(b.chainId))!.name, symbol: b.symbol, token: b.address, decimals: Number(b.decimals), amount, usd: price === null ? null : amount * price, native: b.address === NATIVE };
     }),
   );
-  return assets.filter((a) => a.usd !== null && a.usd >= MIN_ASSET_USD).sort((x, y) => (y.usd ?? 0) - (x.usd ?? 0));
+  return assets.filter((a) => a.usd !== null && a.usd >= minUsd).sort((x, y) => (y.usd ?? 0) - (x.usd ?? 0));
 }
 
-function quote(args: { chainId: number; token: string; amount: bigint; address: string }) {
-  const q = new URLSearchParams({ fromChain: String(args.chainId), toChain: String(TEMPO_ID), fromToken: args.token, toToken: OUSD_TEMPO, fromAmount: args.amount.toString(), fromAddress: args.address, toAddress: args.address, integrator: INTEGRATOR, slippage: "0.01" });
+function quote(args: { chainId: number; token: string; amount: bigint; from: string; to: string }) {
+  const q = new URLSearchParams({ fromChain: String(args.chainId), toChain: String(TEMPO_ID), fromToken: args.token, toToken: OUSD_TEMPO, fromAmount: args.amount.toString(), fromAddress: args.from, toAddress: args.to, integrator: INTEGRATOR, slippage: "0.01" });
   return getJson<LifiQuote>(`${LIFI}/quote?${q}`);
 }
 
+/** Gas cost of a route at the higher of the quoted gas price and the fee cap the wallet will use. */
+const gasCostOf = (q: LifiQuote, feeCap: bigint) => {
+  const quoted = BigInt(q.transactionRequest.gasPrice ?? 0);
+  return BigInt(q.transactionRequest.gasLimit ?? 0) * (feeCap > quoted ? feeCap : quoted);
+};
+
 /**
- * Convert one token of the agent wallet to OUSD on Tempo. The OUSD arrives in the same agent wallet.
- * An ERC-20 moves in full. A native token keeps a part for gas.
+ * Convert the full balance of one token to OUSD on Tempo. `account` signs. The OUSD arrives at `toAddress`.
+ * An ERC-20 moves in full. A native token keeps a reserve for gas.
  */
-export async function convertToOusd(userId: string, args: { chainId: number; token: string }) {
-  const account = await walletAccount(userId);
+export async function convertToOusd(account: Account, args: { chainId: number; token: string; toAddress: string; rpcUrl?: string }) {
   const chain = await viemChain(args.chainId);
-  const reader = createPublicClient({ chain, transport: http() });
-  const signer = createWalletClient({ account, chain, transport: http() });
+  // `rpcUrl` replaces the public RPC of the chain, for a paid endpoint or a local fork.
+  const reader = createPublicClient({ chain, transport: http(args.rpcUrl) });
+  const signer = createWalletClient({ account, chain, transport: http(args.rpcUrl) });
   const native = args.token.toLowerCase() === NATIVE;
   const nativeBalance = await reader.getBalance({ address: account.address });
   const balance = native ? nativeBalance : await reader.readContract({ address: args.token as Address, abi: erc20Abi, functionName: "balanceOf", args: [account.address] });
-  const amount = native ? (balance * BigInt(Math.round((1 - NATIVE_KEEP) * 1000))) / 1000n : balance;
-  if (amount <= 0n) throw new Error("The agent wallet does not hold this token.");
+  if (balance <= 0n) throw new NothingToConvertError("The wallet does not hold this token.");
 
-  const q = await quote({ chainId: args.chainId, token: args.token, amount, address: account.address });
+  // The wallet checks its balance against gas limit times the fee cap, so the reserve uses the same fee cap.
+  const feeCap = await reader.estimateFeesPerGas().then((f) => f.maxFeePerGas ?? f.gasPrice ?? 0n).catch(() => 0n);
+  let amount = balance;
+  if (native) {
+    // A first quote gives the gas cost. The amount is the balance less a reserve for that gas.
+    const probe = await quote({ chainId: args.chainId, token: args.token, amount: balance / 2n, from: account.address, to: args.toAddress });
+    amount = balance - gasCostOf(probe, feeCap) * GAS_RESERVE_FACTOR;
+    if (amount <= 0n) throw new NothingToConvertError(`The ${chain.nativeCurrency.symbol} balance on ${chain.name} is only enough for gas.`);
+  }
+  const q = await quote({ chainId: args.chainId, token: args.token, amount, from: account.address, to: args.toAddress });
   const tx = q.transactionRequest;
-  const gasCost = BigInt(tx.gasLimit ?? 0) * BigInt(tx.gasPrice ?? 0);
-  const needed = gasCost + (native ? amount : 0n);
-  if (nativeBalance < needed) throw new Error(`The agent wallet needs more ${chain.nativeCurrency.symbol} on ${chain.name} for gas. It holds ${formatUnits(nativeBalance, 18)} and the route needs about ${formatUnits(needed, 18)}.`);
+  const needed = gasCostOf(q, feeCap) + (native ? amount : 0n);
+  if (nativeBalance < needed) throw new NeedsGasError(`The wallet needs ${chain.nativeCurrency.symbol} on ${chain.name} for gas. It holds ${formatUnits(nativeBalance, 18)} and the route needs about ${formatUnits(needed, 18)}.`);
 
   const hashes: string[] = [];
   if (!native && q.estimate.approvalAddress) {
@@ -97,4 +114,31 @@ export async function convertToOusd(userId: string, args: { chainId: number; tok
   hashes.push(hash);
   const explorer = chain.blockExplorers?.default.url;
   return { hash, hashes, explorer: explorer ? `${explorer}/tx/${hash}` : null, tool: q.tool, expectedOusd: Number(formatUnits(BigInt(q.estimate.toAmount), 6)), etaSeconds: q.estimate.executionDuration ?? null, status: `https://scan.li.fi/tx/${hash}` };
+}
+
+/** Chains and tokens offered in the deposit window. LI.FI resolves each symbol to its address. */
+export const DEPOSIT_CHAINS = [8453, 42161, 1, 10, 137, 56] as const;
+export const DEPOSIT_SYMBOLS = ["native", "USDC", "USDT", "WBTC", "DAI", "WETH"] as const;
+
+/**
+ * A route for a deposit that the user sends from an own wallet: any listed token to OUSD on Tempo, delivered to `toAddress`.
+ * The browser sends the approval (when needed) and the transaction. The server signs nothing.
+ */
+export async function depositQuote(args: { chainId: number; symbol: string; amount: string; from: string; toAddress: string }) {
+  const chain = await viemChain(args.chainId);
+  const token = await getJson<{ address: string; symbol: string; decimals: number; priceUSD?: string }>(`${LIFI}/token?chain=${args.chainId}&token=${args.symbol === "native" ? NATIVE : args.symbol}`);
+  const amount = parseUnits(args.amount, token.decimals);
+  if (amount <= 0n) throw new Error("Enter an amount above zero.");
+  const q = await quote({ chainId: args.chainId, token: token.address, amount, from: args.from, to: args.toAddress });
+  const native = token.address === NATIVE;
+  let approval: { token: string; spender: string; amount: string } | null = null;
+  if (!native && q.estimate.approvalAddress) {
+    const allowance = await createPublicClient({ chain, transport: http() }).readContract({ address: token.address as Address, abi: erc20Abi, functionName: "allowance", args: [args.from as Address, q.estimate.approvalAddress as Address] });
+    if (allowance < amount) approval = { token: token.address, spender: q.estimate.approvalAddress, amount: amount.toString() };
+  }
+  return {
+    chainId: args.chainId, chainName: chain.name, symbol: token.symbol, tool: q.tool, approval,
+    transaction: { to: q.transactionRequest.to, data: q.transactionRequest.data, value: `0x${BigInt(q.transactionRequest.value ?? 0).toString(16)}` },
+    expectedOusd: Number(formatUnits(BigInt(q.estimate.toAmount), 6)), minOusd: Number(formatUnits(BigInt(q.estimate.toAmountMin), 6)), etaSeconds: q.estimate.executionDuration ?? null,
+  };
 }
