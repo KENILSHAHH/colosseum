@@ -16,9 +16,12 @@ export type AgentEvent =
   | { type: "tool_result"; id: string; isError: boolean; preview: string }
   | { type: "intent"; intent: Intent }
   | { type: "permission"; permission: Permission }
+  | { type: "wallet_request"; request: WalletRequest }
   | { type: "charged"; amountUsd: number }
   | { type: "done"; costUsd: number; chargedUsd: number; turns: number; stopReason: string }
   | { type: "error"; message: string };
+
+export interface WalletRequest { id: string; owner: string; chain: string; chainId: number; chainName: string; explorer: string; summary: string; transactions: { to: string; data: string; value: string; description: string }[] }
 
 export interface Permission {
   id: string;

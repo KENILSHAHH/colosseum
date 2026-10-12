@@ -7,16 +7,18 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { IntentCard } from "@/components/IntentCard";
 import { PermissionCard } from "@/components/PermissionCard";
+import { WalletRequestCard } from "@/components/WalletRequestCard";
 import { PositionsView } from "@/components/Positions";
 import { Sidebar } from "@/components/Sidebar";
-import { chat, usd, type Intent, type Permission } from "@/lib/api";
+import { chat, post, usd, type Intent, type Permission, type WalletRequest } from "@/lib/api";
 import { useSession } from "@/lib/session";
 
 type Part =
   | { kind: "text"; text: string }
   | { kind: "tool"; id: string; name: string; input: unknown; result?: string; isError?: boolean }
   | { kind: "intent"; intent: Intent }
-  | { kind: "permission"; permission: Permission };
+  | { kind: "permission"; permission: Permission }
+  | { kind: "wallet_request"; request: WalletRequest };
 
 interface Message {
   role: "user" | "assistant";
@@ -56,6 +58,8 @@ const TOOL_LABELS: Record<string, string> = {
   job_list: "List jobs",
   job_cancel: "Cancel a job",
   linked_wallet_permission_context: "Read a permission",
+  linked_wallet_ask_to_sign: "Ask you to sign",
+  flash_run: "Flash run",
   linked_wallet_overview: "Read your wallet",
   linked_wallet_request_permission: "Ask for a permission",
   linked_wallet_send_transactions: "Send from your wallet",
@@ -151,6 +155,7 @@ export default function Page() {
             patchLast((m) => ({ ...m, cost: { chargedUsd: ev.chargedUsd, costUsd: ev.costUsd } }));
             qc.invalidateQueries({ queryKey: ["billing"] });
             qc.invalidateQueries({ queryKey: ["me"] });
+          else if (ev.type === "wallet_request") patchLast((m) => ({ ...m, parts: [...m.parts, { kind: "wallet_request", request: ev.request }] }));
           } else if (ev.type === "error") patchLast((m) => ({ ...m, error: ev.message }));
         }
       } catch (e) {
@@ -348,6 +353,7 @@ function MessageView({ message, streaming }: { message: Message; streaming: bool
       )}
       {message.error && <div className="mt-3 rounded-lg border border-bad/40 bg-bad/10 px-3 py-2 text-[13.5px] text-bad">{message.error}</div>}
       {message.cost && (
+        if (p.kind === "wallet_request") return <WalletRequestCard key={p.request.id} request={p.request} />;
         <div className="mt-3 text-[11.5px] text-faint">
           Charged {usd(message.cost.chargedUsd)} · model cost {usd(message.cost.costUsd)}
         </div>

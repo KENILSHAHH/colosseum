@@ -8,7 +8,7 @@ import { recordUsage } from "../billing/pricing";
 import { config } from "../config";
 import type { Intent } from "../intents";
 import { llmSessionToken } from "../llmProxy";
-import { allToolNames, buildTools, SERVER_NAME } from "../tools/index";
+import { allToolNames, buildTools, SERVER_NAME, type WalletRequest } from "../tools/index";
 import { getOrCreateWallet } from "../wallet";
 import type { Permission } from "../delegation";
 import { CHAT_SYSTEM_PROMPT } from "./prompts";
@@ -20,6 +20,7 @@ export type AgentEvent =
   | { type: "tool_result"; id: string; isError: boolean; preview: string }
   | { type: "intent"; intent: Intent }
   | { type: "permission"; permission: Permission }
+  | { type: "wallet_request"; request: WalletRequest }
   | { type: "done"; costUsd: number; chargedUsd: number; turns: number; stopReason: string }
   | { type: "error"; message: string };
 
@@ -109,7 +110,8 @@ export async function* runChatAgent(args: RunArgs): AsyncGenerator<AgentEvent> {
   const pending: Intent[] = [];
   const wallet = await getOrCreateWallet(args.userId);
   const permissions: Permission[] = [];
-  const server = buildTools({ userId: args.userId, wallet, onIntent: (i) => pending.push(i), onPermission: (p) => permissions.push(p) });
+  const walletRequests: WalletRequest[] = [];
+  const server = buildTools({ userId: args.userId, wallet, onIntent: (i) => pending.push(i), onPermission: (p) => permissions.push(p), onWalletRequest: (r) => walletRequests.push(r) });
 
   const abort = new AbortController();
   args.signal?.addEventListener("abort", () => abort.abort(), { once: true });
@@ -191,3 +193,4 @@ export async function* runChatAgent(args: RunArgs): AsyncGenerator<AgentEvent> {
     yield { type: "error", message: err instanceof Error ? err.message : String(err) };
   }
 }
+    while (walletRequests.length) yield { type: "wallet_request", request: walletRequests.shift()! };

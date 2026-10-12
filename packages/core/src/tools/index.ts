@@ -30,7 +30,12 @@ export interface ToolContext {
   onIntent: (intent: Intent) => void;
   /** Called when the agent asks for a permission on the linked wallet. The browser shows a card to sign. */
   onPermission: (permission: delegation.Permission) => void;
+  /** Called when the agent asks the user to sign transactions in the linked wallet. The browser shows a card. */
+  onWalletRequest: (request: WalletRequest) => void;
 }
+
+/** Transactions that the user signs in the linked wallet (MetaMask or another). The server signs nothing. */
+export interface WalletRequest { id: string; owner: string; chain: string; chainId: number; chainName: string; explorer: string; summary: string; transactions: { to: string; data: string; value: string; description: string }[] }
 
 export const SERVER_NAME = "defi";
 
@@ -162,6 +167,28 @@ export function buildTools(ctx: ToolContext) {
         const permission = await delegation.proposePermission(ctx.userId, a);
         ctx.onPermission(permission);
         return { status: "AWAITING_USER_SIGNATURE", permission, note: "The user sees a card to sign. Nothing can be sent from the linked wallet until the user signs." };
+      })),
+
+    tool("linked_wallet_ask_to_sign", "Ask the user to sign transactions in their own linked wallet now. The browser shows a card and the wallet (MetaMask or another) asks the user to confirm. Use it for an action the user wants now from the linked wallet when no active permission covers it, and always when the wallet is MetaMask: MetaMask does not let an app request a permission (it refuses to sign a delegation for its own accounts), so permissions and scheduled jobs from a MetaMask wallet are not possible. The result is AWAITING_USER_WALLET: stop and tell the user to confirm. The card shows the transaction ids after it is sent; read the position again afterwards.",
+      {
+        chain: z.enum(delegation.DELEGATION_CHAINS),
+        summary: z.string().min(10).describe("What the transactions do, in plain words"),
+        transactions: z.array(TxShape).min(1).max(20),
+      },
+      run(async (a) => {
+        const linked = await delegation.getLinkedWallet(ctx.userId);
+        if (!linked) throw new Error("The user has no linked wallet. Ask the user to link one in the sidebar first.");
+        for (const t of a.transactions) if (t.to && t.data !== "0x" && !(await evm.hasCode(a.chain, t.to as `0x${string}`))) throw new Error(`Target ${t.to} has no contract code on ${CHAINS[a.chain].name}.`);
+        const txs = a.transactions.map(toEvmTx);
+        const simulation = await evm.simulate(a.chain, linked, txs);
+        const bad = simulation.results.find((r, i) => r.status === "revert" && (i === 0 || simulation.method === "eth_simulateV1"));
+        if (bad) throw new Error(`Simulation from the linked wallet: transaction ${bad.index + 1} reverts (${bad.error}). Nothing was asked.`);
+        const request: WalletRequest = {
+          id: `req_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, owner: linked, chain: a.chain, chainId: CHAINS[a.chain].chainId!, chainName: CHAINS[a.chain].name,
+          explorer: CHAINS[a.chain].explorer, summary: a.summary, transactions: txs.map((t) => ({ to: t.to!, data: t.data, value: t.value, description: t.description })),
+        };
+        ctx.onWalletRequest(request);
+        return { status: "AWAITING_USER_WALLET", requestId: request.id, simulation: simulation.results.map((r) => r.status), note: "The user sees a card and confirms in their wallet. Do not say that it ran." };
       })),
 
     tool("linked_wallet_permission_context", "Get the signed delegation of an active permission, encoded for DelegationManager.redeemDelegations. Use it when a contract is the delegate: pass permissionContext to your contract (as calldata or in its storage) so it can make the user's wallet act, for example inside a flash-loan callback. For a permission of the agent wallet you do not need this: use linked_wallet_send_transactions.",
@@ -428,6 +455,6 @@ export function buildTools(ctx: ToolContext) {
 export const TOOL_NAMES = [
   "wallet_overview", "rates_compare", "hl_markets", "hl_account", "hl_outcomes", "sol_quote", "bridge_quote", "bridge_status", "aave_account", "aave_v4_markets", "aave_v4_account", "evm_simulate",
   "hl_open_position", "hl_close_position", "aave_supply_borrow", "bridge", "evm_send_transactions", "guard_register_aave", "aave_v4_action", "hl_deposit", "job_schedule", "job_list", "job_cancel", "flash_run",
-  "linked_wallet_overview", "linked_wallet_request_permission", "linked_wallet_permission_context", "linked_wallet_send_transactions",
+  "linked_wallet_overview", "linked_wallet_ask_to_sign", "linked_wallet_request_permission", "linked_wallet_permission_context", "linked_wallet_send_transactions",
 ];
 export const allToolNames = () => TOOL_NAMES.map((t) => `mcp__${SERVER_NAME}__${t}`);

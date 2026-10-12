@@ -90,7 +90,15 @@ export function useLinkedWallet() {
         }
 
         onStep?.("Sign the permission in your wallet");
-        const signature = await provider.request({ method: "eth_signTypedData_v4", params: [wallet.address, JSON.stringify(info.typedData)] });
+        let signature: unknown;
+        try {
+          signature = await provider.request({ method: "eth_signTypedData_v4", params: [wallet.address, JSON.stringify(info.typedData)] });
+        } catch (e) {
+          // MetaMask refuses to sign a delegation for its own accounts. No setting changes that.
+          if (/cannot sign delegations|internal accounts/i.test(e instanceof Error ? e.message : String(e)))
+            throw new Error("MetaMask does not let apps request permissions. Ask the agent to send the transactions to your wallet to sign, or link a wallet that signs permissions, such as Rabby.");
+          throw e;
+        }
         const granted = await post<Permission>(`/permissions/${id}/grant`, { signature });
         qc.invalidateQueries({ queryKey: ["permissions"] });
         return granted;
