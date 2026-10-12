@@ -16,6 +16,8 @@ import * as delegation from "../delegation";
 import { executeIntent } from "../executors/index";
 import { createIntent, transition, type Intent, type IntentKind } from "../intents";
 import * as jobs from "../jobs";
+import * as flash from "../flashExecutor";
+import { ensureUpgraded, isSponsored, simulateSponsored } from "../sponsor";
 import { getPositions } from "../positions";
 import { SPONSORED_CHAINS, sponsorEnabled } from "../sponsor";
 import { CHAIN_KEYS, CHAINS, USDC } from "../registry/chains";
@@ -355,6 +357,43 @@ export function buildTools(ctx: ToolContext) {
         }, a.usdValue);
       })),
 
+    tool("flash_run", "Run a flash loan, an unwind, a leveraged position or any multi-step plan through the shared FlashExecutor contract, deployed one time on Ethereum, Arbitrum, Base and Robinhood Chain. Do not write or deploy a contract for this. Describe the steps: from=executor runs the call from the executor (it holds the borrowed tokens; use it to swap or to send tokens to a wallet), from=agent makes the agent wallet call, from=linked makes the user's own wallet call (it needs an active permission whose delegate is the executor: ask with linked_wallet_request_permission and delegate=<executor address from this tool's error or from linked_wallet_overview>). The loan comes from Morpho (no fee, Ethereum and Base) or Aave v3 (all but Robinhood), and is repaid after the steps, so the executor must hold `amount` (plus the Aave premium) of the token at the end of the steps. Everything left in the executor of the `sweep` tokens goes to the agent wallet. A wallet that must pay the executor uses transfer, never approve. The run is simulated first.",
+      {
+        chain: z.enum(flash.EXECUTOR_CHAINS),
+        lender: z.enum(["none", "morpho", "aave_v3"]),
+        token: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional().describe("Token to borrow"),
+        amount: z.string().regex(/^[0-9]+$/).optional().describe("Amount to borrow in base units"),
+        steps: z.array(z.object({ from: z.enum(["executor", "agent", "linked"]), to: z.string().regex(/^0x[0-9a-fA-F]{40}$/), value: z.string().regex(/^[0-9]+$/).optional(), data: z.string().regex(/^0x[0-9a-fA-F]*$/), description: z.string() })).min(1).max(40),
+        sweep: z.array(z.string().regex(/^0x[0-9a-fA-F]{40}$/)).max(10).describe("Tokens to send back to the agent wallet at the end. 0x000…000 is the native token."),
+        summary: z.string().min(10),
+        usdValue: z.number().min(0),
+      },
+      run(async (a) => {
+        const steps = a.steps as flash.FlashStep[];
+        if (steps.some((s) => s.from === "agent")) await ensureUpgraded(ctx.userId, a.chain);
+        const linkedSteps = steps.some((s) => s.from === "linked");
+        if (linkedSteps && a.chain === "robinhood") throw new Error("Permissions of the linked wallet are not available on Robinhood Chain.");
+        const perms = linkedSteps ? await delegation.executorPermissions(ctx.userId, a.chain as delegation.DelegationChain) : [];
+        const tx = await flash.buildFlashRun(ctx.userId, {
+          chain: a.chain, lender: a.lender, token: a.token as `0x${string}` | undefined, amount: a.amount, steps, sweep: a.sweep as `0x${string}`[],
+          linkedPermission: async (s) => {
+            const p = perms.find((x) => flash.coversCall(x, s));
+            if (!p) throw new Error(`No active permission of the linked wallet lets the executor ${flash.executorAddress()} call ${s.to} (${s.data.slice(0, 10)}). Ask for one with linked_wallet_request_permission and delegate=${flash.executorAddress()}.`);
+            const c = await delegation.permissionContext(p.id, ctx.userId);
+            return { wallet: p.owner as `0x${string}`, permission: c.permissionContext as `0x${string}` };
+          },
+        });
+        // Simulate the way it is sent: through the gas sponsor on a sponsored chain.
+        const simulation = isSponsored(a.chain)
+          ? await simulateSponsored(ctx.userId, a.chain, [tx]).then((r) => ({ method: "sponsored eth_estimateGas", results: [{ index: 0, description: tx.description, status: r.ok ? ("success" as const) : ("revert" as const), gasUsed: r.gas, error: r.error }] }))
+          : await evm.simulate(a.chain, address, [tx]);
+        if (simulation.results[0]?.status === "revert") throw new Error(`Simulation: the run reverts (${simulation.results[0].error}). Nothing was sent. Check each step, the amounts and the loan repayment.`);
+        return act("evm_transactions", { chain: a.chain, transactions: [tx] }, {
+          venue: "FlashExecutor", chain: CHAINS[a.chain].name, summary: a.summary, sources: [`Shared executor ${flash.executorAddress()}`], simulation,
+          transactions: [{ ...tx, chainId: CHAINS[a.chain].chainId }],
+        }, a.usdValue);
+      })),
+
     tool("job_list", "List the scheduled jobs of the user: name, condition, live value at the last check, status and result.",
       {}, run(async () => ({ jobs: await jobs.listJobs(ctx.userId, true) })), read),
 
@@ -388,7 +427,7 @@ export function buildTools(ctx: ToolContext) {
 
 export const TOOL_NAMES = [
   "wallet_overview", "rates_compare", "hl_markets", "hl_account", "hl_outcomes", "sol_quote", "bridge_quote", "bridge_status", "aave_account", "aave_v4_markets", "aave_v4_account", "evm_simulate",
-  "hl_open_position", "hl_close_position", "aave_supply_borrow", "bridge", "evm_send_transactions", "guard_register_aave", "aave_v4_action", "hl_deposit", "job_schedule", "job_list", "job_cancel",
+  "hl_open_position", "hl_close_position", "aave_supply_borrow", "bridge", "evm_send_transactions", "guard_register_aave", "aave_v4_action", "hl_deposit", "job_schedule", "job_list", "job_cancel", "flash_run",
   "linked_wallet_overview", "linked_wallet_request_permission", "linked_wallet_permission_context", "linked_wallet_send_transactions",
 ];
 export const allToolNames = () => TOOL_NAMES.map((t) => `mcp__${SERVER_NAME}__${t}`);

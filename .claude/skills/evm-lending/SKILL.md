@@ -58,12 +58,12 @@ function _isPositionManager(address user, address manager) internal view returns
   1. Ask for a permission on the linked wallet: the Spoke (`withdraw`, `repay`), the collateral token and the debt token (`approve`), and the swap contract of the route.
   2. One round, as one batch from the wallet: withdraw the collateral that the health factor allows, swap it to the debt token, repay. Each round raises the health factor, so the next round can withdraw more. Three or four rounds close a position with a health factor near 1.3.
   3. To do it at a price or a health factor, store the rounds with `job_schedule`. Use Aave v4 steps for repay and withdraw so the amounts are current when the job fires.
-- A flash-loan unwind in one transaction also works. Aave v4 has no flash loan of its own, so take the loan from Aave v3 (`flashLoanSimple`) or Morpho (`flashLoan`, no fee). Steps:
-  1. Write the receiver contract. In its callback it sends the debt token to the wallet, then calls `DelegationManager.redeemDelegations` so the wallet approves and repays, withdraws the collateral and sends it to the receiver. The receiver swaps the collateral and repays the loan. Send what is left to the wallet. Only the agent wallet may start it.
-  2. Deploy it and test it on a fork of the live chain.
-  3. Ask for a permission with `delegate` set to the receiver contract (`linked_wallet_request_permission`). The targets are the Spoke and the tokens, the functions are `repay`, `withdraw`, `approve`, `transfer`.
-  4. After the user signs, read the signed delegation with `linked_wallet_permission_context` and give `permissionContext` to the contract.
-  5. Run it now, or store the call with `job_schedule`.
+- A flash-loan unwind in one transaction: use `flash_run` and the shared FlashExecutor. Do not write or deploy a contract for it.
+  - The executor is one audited-by-us-only contract at the same address on Ethereum, Arbitrum, Base and Robinhood Chain (the tool error names it). It borrows from Morpho (no fee; Ethereum, Base) or Aave v3, runs the steps, repays the loan and sends what is left to the agent wallet.
+  - Steps: `executor` (calls from the executor, for example send the loan to the wallet or swap), `agent` (the agent wallet acts; the server signs a one-hour permission for exactly those calls), `linked` (the user's own wallet acts; it needs an active permission with `delegate` = the executor, asked with `linked_wallet_request_permission`).
+  - Unwind recipe (tested on a Base fork on 2026-10-12): executor sends the borrowed debt token to the wallet; wallet approves the Spoke or Pool and repays all; wallet withdraws the collateral with the executor as receiver; executor approves and swaps the collateral on an on-chain DEX route; the loan is repaid; the rest goes back. For a swap route from LI.FI use a plain DEX (`allowExchanges=sushiswap,kyberswap,1inch`). An RFQ route (nordstern) fails because its quote is signed for another state.
+  - A wallet pays the executor with `transfer`. Never approve the executor: anyone can start a run.
+  - Store the same `flash_run` plan with `job_schedule` (as fixed transactions) to unwind at a price.
 - Aave's own position managers (NativeTokenGateway, SignatureGateway, Giver, Taker, Config) are in `src/position-manager`. The API query `spokePositionManagers` lists the active ones for a spoke.
 
 ## Unwind design (this product)

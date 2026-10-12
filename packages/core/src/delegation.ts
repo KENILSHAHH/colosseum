@@ -13,6 +13,7 @@ import { recoverMessageAddress, recoverTypedDataAddress, toFunctionSelector, typ
 import type { EvmTx } from "./adapters/evm";
 import { signToken, verifyToken } from "./crypto";
 import { sql } from "./db";
+import { executorAddress, starterCaveat } from "./flashExecutor";
 import { CHAINS, type ChainKey } from "./registry/chains";
 import { getOrCreateWallet, publicClient } from "./wallet";
 
@@ -111,6 +112,8 @@ export async function proposePermission(userId: string, args: { chain: Delegatio
     scope: { type: ScopeType.FunctionCall, targets: targets as Address[], selectors: functions, valueLte: { maxValue } },
     caveats: [{ type: "timestamp", afterThreshold: 0, beforeThreshold: expires }],
   } as never) as unknown as StoredDelegation;
+  // A permission for the shared executor names the agent wallet as the only address that may start a run with it.
+  if (agent.toLowerCase() === executorAddress().toLowerCase()) d.caveats = [...d.caveats, starterCaveat(args.chain, agentWallet)];
   // A random salt makes each permission a different delegation.
   const delegation: StoredDelegation = { delegate: d.delegate, delegator: d.delegator, authority: d.authority, caveats: d.caveats, salt: `0x${randomBytes(16).toString("hex")}` };
 
@@ -205,4 +208,9 @@ export async function permissionContext(id: string, userId: string) {
     delegation: signed,
     howToUse: "The delegate calls DelegationManager.redeemDelegations([permissionContext], [mode], [executionCallData]). mode 0x00…00 runs one call encoded as abi.encodePacked(target, value, callData). mode 0x01 followed by 31 zero bytes runs a batch encoded as abi.encode((address target, uint256 value, bytes callData)[]). The wallet of the user then makes the calls.",
   };
+}
+
+/** Active permissions of the linked wallet whose delegate is the shared executor. */
+export async function executorPermissions(userId: string, chain: DelegationChain): Promise<Permission[]> {
+  return (await listPermissions(userId)).filter((p) => p.status === "active" && p.chain === chain && p.delegate.toLowerCase() === executorAddress().toLowerCase());
 }

@@ -57,18 +57,34 @@ async function withRetry<T>(read: () => Promise<T>, attempts = 4): Promise<T> {
   }
 }
 
+/** First use on a chain: the wallet signs the EIP-7702 authorization and the sponsor sends it. */
+async function upgrade(owner: Awaited<ReturnType<typeof walletAccount>>, chain: ChainKey) {
+  const implementation = (getSmartAccountsEnvironment(CHAINS[chain].chainId!).implementations as Record<string, string>).EIP7702StatelessDeleGatorImpl as Address;
+  const relayer = createWalletClient({ account: sponsor(), chain: viemChain(chain), transport: http() });
+  const authorization = await createWalletClient({ account: owner, chain: viemChain(chain), transport: http() }).signAuthorization({ contractAddress: implementation });
+  const h = await relayer.sendTransaction({ authorizationList: [authorization], to: owner.address, data: "0x" });
+  const r = await publicClient(chain).waitForTransactionReceipt({ hash: h, timeout: 120_000 });
+  if (r.status !== "success") throw new Error(`The wallet upgrade ${h} reverted.`);
+}
+
+/** Make sure the agent wallet runs the smart account code on this chain, so a permission it signed can be used. */
+export async function ensureUpgraded(userId: string, chain: ChainKey): Promise<void> {
+  const owner = await walletAccount(userId);
+  const implementation = (getSmartAccountsEnvironment(CHAINS[chain].chainId!).implementations as Record<string, string>).EIP7702StatelessDeleGatorImpl as Address;
+  const code = await publicClient(chain).getCode({ address: owner.address });
+  if (code?.toLowerCase() === `0xef0100${implementation.slice(2).toLowerCase()}`) return;
+  if (!isSponsored(chain)) throw new Error(`The wallet is not a smart account on ${CHAINS[chain].name}, and no gas sponsor runs there.`);
+  await inOrder(chain, () => upgrade(owner, chain));
+}
+
 export interface SponsoredResult { hash: Hex; block: number; gasUsed: string; deployed: (Address | null)[] }
 
 /**
  * Run calls from the wallet of the user in one transaction that the sponsor sends and pays for. All calls succeed or none does.
  * A call with `to: null` deploys a contract through the CREATE2 proxy. Its constructor sees the proxy as `msg.sender`.
  */
-export async function sendSponsored(userId: string, chain: ChainKey, txs: EvmTx[]): Promise<SponsoredResult> {
-  if (!isSponsored(chain)) throw new Error(`Gas sponsorship is not available on ${CHAINS[chain].name}.`);
-  const limit = config().SPONSOR_DAILY_TXS;
-  const [used] = await sql()<{ n: string }[]>`select count(*) as n from sponsored_txs where user_id = ${userId} and created_at > now() - interval '24 hours'`;
-  if (Number(used?.n ?? 0) >= limit) throw new Error(`The daily limit of ${limit} sponsored transactions is reached. Try again tomorrow.`);
-
+/** The redeem transaction that the sponsor sends for these calls of the wallet of the user. */
+async function buildSponsored(userId: string, chain: ChainKey, txs: EvmTx[]) {
   const owner = await walletAccount(userId);
   const chainId = CHAINS[chain].chainId!;
   const env = getSmartAccountsEnvironment(chainId);
@@ -103,16 +119,35 @@ export async function sendSponsored(userId: string, chain: ChainKey, txs: EvmTx[
     executions: [executions],
   } as never);
 
+  return { owner, manager, implementation, reader, relayer, data, deployed };
+}
+
+/**
+ * Simulate calls of the wallet exactly as the sponsor will send them. A plain call from the wallet can give a different
+ * result (for example a swap route that fails when the caller is an account with code), so sponsored chains use this.
+ */
+export async function simulateSponsored(userId: string, chain: ChainKey, txs: EvmTx[]): Promise<{ ok: boolean; gas: string | null; error: string | null }> {
+  const { manager, reader, relayer, data } = await buildSponsored(userId, chain, txs);
+  try {
+    const gas = await withRetry(() => reader.estimateGas({ account: relayer.account, to: manager, data }));
+    return { ok: true, gas: gas.toString(), error: null };
+  } catch (err) {
+    return { ok: false, gas: null, error: (err instanceof Error ? err.message : String(err)).split("\n").slice(0, 3).join(" ").slice(0, 400) };
+  }
+}
+
+export async function sendSponsored(userId: string, chain: ChainKey, txs: EvmTx[]): Promise<SponsoredResult> {
+  if (!isSponsored(chain)) throw new Error(`Gas sponsorship is not available on ${CHAINS[chain].name}.`);
+  const limit = config().SPONSOR_DAILY_TXS;
+  const [used] = await sql()<{ n: string }[]>`select count(*) as n from sponsored_txs where user_id = ${userId} and created_at > now() - interval '24 hours'`;
+  if (Number(used?.n ?? 0) >= limit) throw new Error(`The daily limit of ${limit} sponsored transactions is reached. Try again tomorrow.`);
+
+  const { owner, manager, implementation, reader, relayer, data, deployed } = await buildSponsored(userId, chain, txs);
+
   return inOrder(chain, async () => {
     const [code, balance] = await Promise.all([reader.getCode({ address: owner.address }), reader.getBalance({ address: relayer.account.address })]);
     if (balance === 0n) throw new Error(`The gas sponsor ${relayer.account.address} has no ETH on ${CHAINS[chain].name}. The operator must fund it.`);
-    if (code?.toLowerCase() !== `0xef0100${implementation.slice(2).toLowerCase()}`) {
-      // First use on this chain: the wallet signs the EIP-7702 authorization and the sponsor sends it.
-      const authorization = await createWalletClient({ account: owner, chain: viemChain(chain), transport: http() }).signAuthorization({ contractAddress: implementation });
-      const h = await relayer.sendTransaction({ authorizationList: [authorization], to: owner.address, data: "0x" });
-      const r = await reader.waitForTransactionReceipt({ hash: h, timeout: 120_000 });
-      if (r.status !== "success") throw new Error(`The wallet upgrade ${h} reverted.`);
-    }
+    if (code?.toLowerCase() !== `0xef0100${implementation.slice(2).toLowerCase()}`) await upgrade(owner, chain);
     // A dry run finds a failing call before the sponsor pays for it.
     const gas = await withRetry(() => reader.estimateGas({ account: relayer.account, to: manager, data }));
     const hash = await relayer.sendTransaction({ to: manager, data, gas: (gas * 13n) / 10n });
