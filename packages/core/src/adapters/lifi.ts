@@ -1,6 +1,6 @@
 // LI.FI, the routing API behind jumper.xyz. Docs: https://docs.li.fi/api-reference/introduction
 // It moves any token on any supported EVM chain to OUSD on Tempo. The agent wallet signs the transactions.
-import { createPublicClient, createWalletClient, defineChain, erc20Abi, formatUnits, http, parseUnits, type Account, type Address, type Hex } from "viem";
+import { createPublicClient, createWalletClient, defineChain, encodeFunctionData, erc20Abi, formatUnits, http, parseUnits, type Account, type Address, type Hex } from "viem";
 import { getJson } from "./http";
 
 const LIFI = "https://li.quest/v1";
@@ -141,4 +141,23 @@ export async function depositQuote(args: { chainId: number; symbol: string; amou
     transaction: { to: q.transactionRequest.to, data: q.transactionRequest.data, value: `0x${BigInt(q.transactionRequest.value ?? 0).toString(16)}` },
     expectedOusd: Number(formatUnits(BigInt(q.estimate.toAmount), 6)), minOusd: Number(formatUnits(BigInt(q.estimate.toAmountMin), 6)), etaSeconds: q.estimate.executionDuration ?? null,
   };
+}
+
+/** Chains where the agent wallet can act, so a token sent there is ready for a position. */
+export const TRADING_DEPOSIT_CHAINS = [8453, 42161, 1] as const;
+
+/**
+ * A plain transfer of a listed token from an own wallet of the user to `toAddress`. The token is not converted.
+ * The browser signs it. LI.FI resolves the symbol to its address and decimals on the chain.
+ */
+export async function depositTransfer(args: { chainId: number; symbol: string; amount: string; toAddress: string }) {
+  const chain = await viemChain(args.chainId);
+  const token = await getJson<{ address: string; symbol: string; decimals: number }>(`${LIFI}/token?chain=${args.chainId}&token=${args.symbol === "native" ? NATIVE : args.symbol}`);
+  const amount = parseUnits(args.amount, token.decimals);
+  if (amount <= 0n) throw new Error("Enter an amount above zero.");
+  const transaction =
+    token.address === NATIVE
+      ? { to: args.toAddress, data: "0x", value: `0x${amount.toString(16)}` }
+      : { to: token.address, data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [args.toAddress as Address, amount] }), value: "0x0" };
+  return { chainId: args.chainId, chainName: chain.name, symbol: token.symbol, approval: null, transaction, expectedOusd: null, etaSeconds: null };
 }

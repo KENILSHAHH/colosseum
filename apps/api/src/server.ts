@@ -268,6 +268,12 @@ app.post("/deposit/enable", async (c) => c.json(await syncDepositWallet(c.get("u
 app.get("/deposit/history", async (c) => c.json(await listDeposits(c.get("userId"))));
 app.get("/deposit/options", (c) => c.json({ chains: lifi.DEPOSIT_CHAINS, symbols: lifi.DEPOSIT_SYMBOLS }));
 
+// A deposit of trading funds: a plain transfer of a listed token to the agent wallet. The token stays as it is, ready for a position.
+app.post("/deposit/transfer", async (c) => {
+  const body = z.object({ chainId: z.number().int().refine((n) => (lifi.TRADING_DEPOSIT_CHAINS as readonly number[]).includes(n)), symbol: z.enum(lifi.DEPOSIT_SYMBOLS), amount: z.string().regex(/^\d+(\.\d+)?$/) }).parse(await c.req.json());
+  return lifi.depositTransfer({ ...body, toAddress: (await getOrCreateWallet(c.get("userId"))).address }).then((q) => c.json(q), badRequest);
+});
+
 // A direct deposit from an own wallet of the user: any listed token to OUSD on Tempo, delivered to the agent wallet. The browser signs.
 app.post("/deposit/quote", async (c) => {
   const body = z.object({ chainId: z.number().int().refine((n) => (lifi.DEPOSIT_CHAINS as readonly number[]).includes(n)), symbol: z.enum(lifi.DEPOSIT_SYMBOLS), amount: z.string().regex(/^\d+(\.\d+)?$/), from: Address }).parse(await c.req.json());

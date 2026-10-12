@@ -5,6 +5,7 @@ import { Check, Loader2, LogOut, Plus, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { api, short, usd, type Me, type Permission } from "@/lib/api";
 import { useLinkedWallet } from "@/lib/linkedWallet";
+import { DepositPanel } from "./DepositPanel";
 import type { useSession } from "@/lib/session";
 
 interface Guard { id: string; venue: string; params: Record<string, any>; status: string; lastValue: number | null; lastCheck: string | null }
@@ -66,6 +67,7 @@ export function Sidebar({ session, onNewChat }: { session: ReturnType<typeof use
               </div>
             </Section>
             <Balances />
+            <DepositPanel me={me} />
             <LinkedWallet me={me} />
             <Guards />
           </>
