@@ -84,7 +84,7 @@ body {
   border-radius: 50%;
   background: radial-gradient(closest-side, var(--c) 0%, transparent 100%);
   filter: blur(70px);
-  opacity: 0.14;
+  opacity: 0.2;
   will-change: transform, opacity;
   animation: aurora-drift var(--t) ease-in-out var(--d) infinite alternate, aurora-pulse calc(var(--t) * 0.7) ease-in-out var(--d) infinite alternate;
 }
@@ -109,13 +109,13 @@ body {
   100% { transform: translate3d(-10vw, 10vh, 0); }
 }
 @keyframes aurora-pulse {
-  0% { opacity: 0.08; }
-  100% { opacity: 0.18; }
+  0% { opacity: 0.12; }
+  100% { opacity: 0.26; }
 }
 @media (prefers-reduced-motion: reduce) {
   .aurora span {
     animation: none;
-    opacity: 0.12;
+    opacity: 0.18;
   }
 }
 
