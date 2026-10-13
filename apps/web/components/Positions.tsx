@@ -2,32 +2,12 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, RefreshCw, ShieldCheck } from "lucide-react";
-import { useState } from "react";
 import { api, short, usd, type Positions } from "@/lib/api";
+import { CHAIN_LOGO, Logo } from "./Logo";
 
 const n = (v: number | null | undefined, d = 2) => (v === null || v === undefined ? "—" : v.toLocaleString("en-US", { maximumFractionDigits: d }));
 
-/** Local logos for the chains of this product. Other chains use the LI.FI logo. */
-const CHAIN_LOGO: Record<number, string> = {
-  1: "/icons/chain-ethereum.png", 8453: "/icons/chain-base.png", 42161: "/icons/chain-arbitrum.png", 4663: "/icons/chain-robinhood.svg",
-  4217: "/icons/chain-tempo.svg", 999: "/icons/chain-hyperliquid.svg", 0: "/icons/chain-solana.svg",
-};
 const CHAIN_ID: Record<string, number> = { ethereum: 1, base: 8453, arbitrum: 42161 };
-
-/** A token or venue logo with a small chain logo at its corner. A missing logo shows the first letter. */
-function Logo({ src, label, chain }: { src: string | null; label: string; chain?: string | null }) {
-  const [broken, setBroken] = useState(false);
-  return (
-    <span className="relative size-8 shrink-0">
-      {src && !broken ? (
-        <img src={src} alt="" onError={() => setBroken(true)} className="size-8 rounded-full bg-raised object-cover" />
-      ) : (
-        <span className="grid size-8 place-items-center rounded-full bg-raised text-[12px] font-bold text-dim">{label.slice(0, 1)}</span>
-      )}
-      {chain && <img src={chain} alt="" className="absolute -bottom-0.5 -right-0.5 size-3.5 rounded-full border border-panel bg-panel" />}
-    </span>
-  );
-}
 
 function Row({ logo, title, sub, value, valueSub, valueClass = "" }: { logo: React.ReactNode; title: React.ReactNode; sub?: React.ReactNode; value: React.ReactNode; valueSub?: React.ReactNode; valueClass?: string }) {
   return (

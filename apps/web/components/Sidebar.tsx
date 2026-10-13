@@ -1,11 +1,12 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownToLine, CalendarClock, History, Trash2, Check, Link2, Loader2, LogIn, LogOut, Menu, Plus, ShieldCheck, UserRound, Wallet } from "lucide-react";
+import { ArrowDownToLine, CalendarClock, ChevronRight, Copy, History, Trash2, Check, Globe, Link2, Loader2, LogIn, LogOut, Menu, Plus, ShieldCheck, UserRound, Wallet } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, post, short, usd, type Me, type Permission } from "@/lib/api";
 import { useLinkedWallet } from "@/lib/linkedWallet";
 import { DepositModal } from "./DepositModal";
+import { CHAIN_LOGO, Logo } from "./Logo";
 import { MenuButton, MenuContext, MenuItem } from "./MenuItem";
 import type { useSession } from "@/lib/session";
 
@@ -114,37 +115,78 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-interface Balance { address: string; usd: number | null; solana: { address: string; usd: number | null; canSign: boolean } | null }
+interface Holding { key: string; symbol: string; chainName: string; amount: number; usd: number | null; logo: string | null; chain: string | null }
+interface Balance {
+  address: string; usd: number | null;
+  assets: { chainId: number; chainName: string; symbol: string; amount: number; usd: number | null; logo: string | null; chainLogo: string | null }[];
+  solana: { address: string; usd: number | null; canSign: boolean; tokens: { mint: string; symbol: string; amount: number; usd: number | null; logo: string | null }[] } | null;
+}
 
-/** The one wallet of the user: its balance in USD. A click copies the address. */
+const amount = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: n >= 1 ? 4 : 6 });
+
+/** The one wallet of the user: its balance in USD, and each token by chain. The copy button copies the address. */
 function Balances() {
-  const { data } = useQuery({ queryKey: ["balances"], queryFn: () => api<Balance>("/billing/balances"), refetchInterval: 15_000 });
-  const [copied, setCopied] = useState<string | null>(null);
+  const { data } = useQuery({ queryKey: ["balances"], queryFn: () => api<Balance>("/billing/balances"), refetchInterval: 5_000 });
   const total = !data ? null : data.usd === null && data.solana?.usd == null ? null : (data.usd ?? 0) + (data.solana?.usd ?? 0);
-  const row = (label: string, logo: string, address: string, value: number | null) => (
-    <button
-      key={label}
-      onClick={async () => { await navigator.clipboard.writeText(address); setCopied(address); setTimeout(() => setCopied(null), 1500); }}
-      title={`Copy ${address}`}
-      className="flex w-full items-center justify-between gap-2 rounded-md py-1 text-[11.5px] text-faint hover:text-dim"
-    >
-      <span className="flex min-w-0 items-center gap-1.5">
-        <img src={logo} alt="" className="size-4 rounded-full" />
-        <span className="text-dim">{label}</span>
-        <span className="truncate font-mono">{short(address)}</span>
-      </span>
-      {copied === address ? <Check className="size-3 shrink-0 text-good" /> : <span className="shrink-0 font-mono tabular-nums">{value === null ? "—" : usd(value)}</span>}
-    </button>
-  );
+  const evm: Holding[] = (data?.assets ?? []).map((a) => ({ key: `${a.chainId}-${a.symbol}`, symbol: a.symbol, chainName: a.chainName, amount: a.amount, usd: a.usd, logo: a.logo, chain: CHAIN_LOGO[a.chainId] ?? a.chainLogo }));
+  const sol: Holding[] = (data?.solana?.tokens ?? []).map((t) => ({ key: `sol-${t.mint}`, symbol: t.symbol, chainName: "Solana", amount: t.amount, usd: t.usd, logo: t.symbol === "SOL" ? CHAIN_LOGO[0]! : t.logo, chain: t.symbol === "SOL" ? null : CHAIN_LOGO[0]! }));
   return (
     <MenuItem icon={Wallet} label="Wallet" value={!data ? "…" : total === null ? "not read" : usd(total)}>
       {!data ? <span className="text-[11.5px] text-faint">…</span> : (
         <>
-          {row("EVM", "/icons/eth.png", data.address, data.usd)}
-          {data.solana && row("Solana", "/icons/chain-solana.svg", data.solana.address, data.solana.usd)}
+          <WalletGroup label="EVM" logo="/icons/eth.png" address={data.address} value={data.usd} holdings={evm} />
+          {data.solana && <WalletGroup label="Solana" logo="/icons/chain-solana.svg" address={data.solana.address} value={data.solana.usd} holdings={sol} />}
         </>
       )}
     </MenuItem>
+  );
+}
+
+/** One address of the wallet. A click shows the tokens it holds, each with its chain. */
+function WalletGroup({ label, logo, address, value, holdings }: { label: string; logo: string; address: string; value: number | null; holdings: Holding[] }) {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  return (
+    <div>
+      <div className="flex items-center gap-1 text-[11.5px] text-faint">
+        <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md py-1 text-left hover:text-dim">
+          <ChevronRight className={`size-3 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
+          <img src={logo} alt="" className="size-4 rounded-full" />
+          <span className="text-dim">{label}</span>
+          <span className="truncate font-mono">{short(address)}</span>
+          <span className="ml-auto shrink-0 font-mono tabular-nums">{value === null ? "—" : usd(value)}</span>
+        </button>
+        <button
+          onClick={async () => { await navigator.clipboard.writeText(address); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+          title={`Copy ${address}`}
+          aria-label={`Copy the ${label} address`}
+          className="shrink-0 rounded p-1 hover:text-ink"
+        >
+          {copied ? <Check className="size-3 text-good" /> : <Copy className="size-3" />}
+        </button>
+      </div>
+      {open && (
+        <div className="mb-1 ml-1.5 border-l border-line pl-2.5">
+          {holdings.length === 0 ? (
+            <p className="py-1 text-[11.5px] text-faint">No tokens yet.</p>
+          ) : (
+            holdings.map((h) => (
+              <div key={h.key} className="flex items-center gap-2 py-1">
+                <Logo src={h.logo} label={h.symbol} chain={h.chain} size="sm" />
+                <div className="min-w-0 flex-1 leading-tight">
+                  <div className="truncate text-[12px] font-medium">{h.symbol}</div>
+                  <div className="truncate text-[10.5px] text-faint">{h.chainName}</div>
+                </div>
+                <div className="shrink-0 text-right leading-tight">
+                  <div className="font-mono text-[11.5px] tabular-nums">{h.usd === null ? "—" : usd(h.usd)}</div>
+                  <div className="font-mono text-[10.5px] tabular-nums text-faint">{amount(h.amount)}</div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -250,7 +292,7 @@ function Paybox() {
   const [busy, setBusy] = useState(false);
   if (!data?.available) return null;
   return (
-    <Section title="World (PayBox)">
+    <MenuItem icon={Globe} label="World (PayBox)" value={data.connected ? "Connected" : undefined}>
       {data.connected ? (
         <div className="flex items-center justify-between text-[12.5px]">
           <span className="flex items-center gap-1.5 text-good"><Check className="size-3.5" /> Connected</span>
@@ -263,7 +305,7 @@ function Paybox() {
           {busy && <Loader2 className="size-3.5 animate-spin" />} Connect PayBox
         </button>
       )}
-    </Section>
+    </MenuItem>
   );
 }
 
