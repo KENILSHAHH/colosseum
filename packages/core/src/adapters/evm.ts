@@ -4,6 +4,12 @@ import { CHAINS, type ChainKey } from "../registry/chains";
 
 export interface EvmTx { to: Address | null; data: Hex; value: string; description: string }
 
+/**
+ * A send that can have changed the chain: a transaction went out and its result is not known, or earlier transactions
+ * of the list are final. A scheduled job does not try such a send again, so it never buys or moves twice.
+ */
+export class SentError extends Error {}
+
 export function evmClient(chain: ChainKey) {
   const info = CHAINS[chain];
   if (info.vm !== "evm") throw new Error(`${info.name} is not an EVM chain.`);

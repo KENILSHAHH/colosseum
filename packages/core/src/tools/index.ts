@@ -20,7 +20,7 @@ import * as solana from "../adapters/solana";
 import { getSolanaWallet } from "../privy";
 import * as memory from "../memory";
 import * as flash from "../flashExecutor";
-import { buildAaveV4Unwind } from "../unwind";
+import { buildAaveV3Unwind, buildAaveV4Unwind } from "../unwind";
 import { ensureUpgraded, isSponsored, simulateSponsored } from "../sponsor";
 import { getPositions } from "../positions";
 import { HL_BLOCKED_ACTIONS, openOrders, spotMarket, spotSize } from "../executors/hyperliquid";
@@ -92,6 +92,16 @@ export function buildTools(ctx: ToolContext) {
   };
 
   const read = { annotations: { readOnlyHint: true } };
+
+  /**
+   * Simulate the transactions the way they are sent: through the gas sponsor on a sponsored chain (one batch from the wallet),
+   * else as plain calls from the wallet. A plain call can pass where the sponsored batch fails, and the other way round.
+   */
+  const simulateAsSent = async (chain: (typeof EVM_CHAINS)[number], txs: evm.EvmTx[]): Promise<{ method: string; note?: string; results: evm.SimResult[] }> => {
+    if (!isSponsored(chain)) return evm.simulate(chain, address, txs);
+    const r = await simulateSponsored(ctx.userId, chain, txs);
+    return { method: "sponsored eth_estimateGas", results: txs.map((t, index) => ({ index, description: t.description, status: r.ok ? ("success" as const) : ("revert" as const), gasUsed: index === 0 ? r.gas : null, error: r.ok ? null : r.error })) };
+  };
 
   /** The address of the user on a chain: the Solana wallet on Solana, the Hyperliquid account on Hyperliquid, else the wallet. */
   const recipientFor = async (chain: string) => {
@@ -256,8 +266,8 @@ export function buildTools(ctx: ToolContext) {
         const chain = built.chain.key;
         if (!chain) throw new Error(`This product cannot send transactions on ${built.chain.name} yet. The agent can read Aave v4 there, but cannot act.`);
         if (linked) return { status: "TRANSACTIONS_BUILT", wallet: linked, chain, transactions: txs, note: "Nothing was sent. Each transaction needs an active permission for its contract (`to`) and its function (the first 4 bytes of `data`). Then call linked_wallet_send_transactions with these transactions." };
-        const simulation = await evm.simulate(chain as (typeof EVM_CHAINS)[number], address, txs);
-        const bad = simulation.results.find((r, i) => r.status === "revert" && (i === 0 || simulation.method === "eth_simulateV1"));
+        const simulation = await simulateAsSent(chain as (typeof EVM_CHAINS)[number], txs);
+        const bad = simulation.results.find((r, i) => r.status === "revert" && (i === 0 || simulation.method !== "eth_estimateGas (single calls)"));
         if (bad) throw new Error(`Simulation: transaction ${bad.index + 1} reverts (${bad.error}). Nothing was sent. Check the balance, the gas and the limits of the reserve.`);
         const summary = `Aave v4 on ${built.chain.name}: ${a.action} ${a.max ? "all" : a.amount}`;
         return act("evm_transactions", { chain, transactions: txs }, {
@@ -331,7 +341,10 @@ export function buildTools(ctx: ToolContext) {
       { chain: z.enum(["ethereum", "arbitrum", "base"]), collateral: z.string().describe("ETH, WETH, WBTC, USDC, ..."), collateralAmount: z.number().positive(), borrow: z.string(), targetLtvPct: z.number().min(1).max(90) },
       run(async (a) => {
         const p = await aave.previewSupplyBorrow({ chain: a.chain, user: address, collateral: a.collateral, collateralAmount: a.collateralAmount, borrow: a.borrow, targetLtv: a.targetLtvPct / 100 });
-        return act("aave_supply_borrow", a, { venue: "Aave v3", ...p }, p.collateral.valueUsd);
+        const simulation = await simulateAsSent(a.chain, p.transactions);
+        const bad = simulation.results.find((r, i) => r.status === "revert" && (i === 0 || simulation.method !== "eth_estimateGas (single calls)"));
+        if (bad) throw new Error(`Simulation: transaction ${bad.index + 1} reverts (${bad.error}). Nothing was sent. Check that the wallet holds ${a.collateralAmount} ${a.collateral} on ${CHAINS[a.chain].name}.`);
+        return act("aave_supply_borrow", a, { venue: "Aave v3", ...p, simulation }, p.collateral.valueUsd);
       })),
 
     tool("hl_deposit", "Deposit USDC from Arbitrum into the Hyperliquid account of the wallet through the official Hyperliquid bridge. No fee. It arrives in less than a minute and it creates the account. This is the cheap way into Hyperliquid: when the USDC is on another chain, first move it to Arbitrum with `bridge` (about 0.03 USD), then call this. The minimum is 5 USDC. Confirm with hl_account.",
@@ -355,7 +368,11 @@ export function buildTools(ctx: ToolContext) {
           const tx = t as { to: string; data: string; value?: string; chainId?: number };
           return { chainId: tx.chainId, to: tx.to, data: tx.data, value: tx.value ?? "0", description: s.description };
         }));
-        return act("bridge", a, { venue: "Relay", ...q, transactions }, a.amount);
+        if (transactions.length === 0) throw new Error("Relay returned no transaction for this route (it may need a signature step). Use swap through LI.FI for this move.");
+        const simulation = await simulateAsSent(a.fromChain, transactions.map((t) => ({ to: t.to as `0x${string}`, data: t.data as `0x${string}`, value: String(t.value), description: t.description })));
+        const bad = simulation.results.find((r, i) => r.status === "revert" && (i === 0 || simulation.method !== "eth_estimateGas (single calls)"));
+        if (bad) throw new Error(`Simulation: the move reverts (${bad.error}). Nothing was sent. Check the balance on ${CHAINS[a.fromChain].name}.`);
+        return act("bridge", a, { venue: "Relay", ...q, transactions, simulation }, a.amount);
       })),
 
     tool("evm_send_transactions", "Send EVM transactions that you built, from the agent wallet: a contract deployment (to = null, data = creation bytecode with constructor arguments) or contract calls. They are simulated first and nothing is sent when the first one reverts. Use a typed tool when one fits. State in `summary` what the transactions do in plain words, in `sources` the doc pages or address books behind every target address and ABI, and in `usdValue` the value they move.",
@@ -371,9 +388,9 @@ export function buildTools(ctx: ToolContext) {
         for (const t of txs) {
           if (t.to && t.data !== "0x" && !(await evm.hasCode(a.chain, t.to))) throw new Error(`Target ${t.to} has no contract code on ${CHAINS[a.chain].name}. Check the address against the official source.`);
         }
-        const simulation = await evm.simulate(a.chain, address, txs);
+        const simulation = await simulateAsSent(a.chain, txs);
         const first = simulation.results[0];
-        if (first?.status === "revert") throw new Error(`Simulation: transaction 1 reverts (${first.error}). Nothing was sent. Fix the calldata or check the wallet balance, gas and allowances.`);
+        if (first?.status === "revert") throw new Error(`Simulation: ${simulation.method.startsWith("sponsored") ? "" : "transaction 1 "}reverts (${first.error}). Nothing was sent. Fix the calldata or check the wallet balance, gas and allowances.`);
         if (simulation.method === "eth_simulateV1") {
           const bad = simulation.results.find((r) => r.status === "revert");
           if (bad) throw new Error(`Simulation: transaction ${bad.index + 1} reverts (${bad.error}). Nothing was sent.`);
@@ -389,7 +406,7 @@ export function buildTools(ctx: ToolContext) {
         }, a.usdValue);
       })),
 
-    tool("job_schedule", "Schedule an action that the server runs later, when a condition is true, once or repeated (daily, hourly, any interval). Actions: EVM transactions, Aave v4 steps or a full unwind, a swap of any token through LI.FI, a Hyperliquid spot order, perp open or close, and agent_task, where you yourself run an instruction at that time with all your tools. So any request of the kind \"do X every day\" or \"do X when Y\" can be scheduled. Schedule an action that the server sends later, when a condition is true. Use it for every request of the kind \"do X when Y\" or \"do X at time T\": unwind or close a position at a price, repay when the health factor is low, buy at a price, act at a time. A loop on the server reads the condition every few seconds, for days, with no chat open. When it is true, the server builds the transactions, simulates them again and sends them. No model decides at that moment, so prepare the action completely now. The action is checked with a simulation before the job is stored. Conditions: price of an asset, Aave v4 or v3 health factor, a time. Actions: fixed transactions, or Aave v4 steps that the Aave API builds when the job fires (use these for repay and withdraw, so the amounts are current). wallet=linked acts from the user's own wallet and needs active permissions for every call.",
+    tool("job_schedule", "Schedule an action that the server runs later, when a condition is true, once or repeated (daily, hourly, any interval). Actions: EVM transactions, Aave v4 steps, a full Aave v3 or v4 unwind with a flash loan, a swap of any token through LI.FI, a Hyperliquid spot order, perp open or close, and agent_task, where you yourself run an instruction at that time with all your tools. So any request of the kind \"do X every day\" or \"do X when Y\" can be scheduled. Schedule an action that the server sends later, when a condition is true. Use it for every request of the kind \"do X when Y\" or \"do X at time T\": unwind or close a position at a price, repay when the health factor is low, buy at a price, act at a time. A loop on the server reads the condition every few seconds, for days, with no chat open. When it is true, the server builds the transactions, simulates them again and sends them. No model decides at that moment, so prepare the action completely now. The action is checked with a simulation before the job is stored. Conditions: price of an asset, Aave v4 or v3 health factor, a time. Actions: fixed transactions, or Aave v4 steps that the Aave API builds when the job fires (use these for repay and withdraw, so the amounts are current). Never store a flash_run as fixed transactions: its permission ends after one hour and its swap quote goes stale; use aave_v3_unwind or aave_v4_unwind, which are built again when the job fires. A failed run that sent nothing is tried again soon (an unwind every 30 seconds while the condition stays true). wallet=linked acts from the user's own wallet and needs active permissions for every call.",
       {
         name: z.string().min(5).max(80).describe("Short name the user sees, for example: Unwind Aave v4 when ETH is below 2000"),
         condition: z.discriminatedUnion("type", [
@@ -402,6 +419,7 @@ export function buildTools(ctx: ToolContext) {
           z.object({ type: z.literal("transactions"), chain: z.enum(EVM_CHAINS), wallet: z.enum(["agent", "linked"]), transactions: z.array(TxShape).min(1).max(40) }),
           z.object({ type: z.literal("aave_v4"), wallet: z.enum(["agent", "linked"]), steps: z.array(z.object({ action: z.enum(["supply", "borrow", "withdraw", "repay"]), reserveId: z.string().min(8), amount: z.string().regex(/^\d+(\.\d+)?$/), max: z.boolean().optional(), native: z.boolean().optional() })).min(1).max(20) }),
           z.object({ type: z.literal("aave_v4_unwind"), wallet: z.enum(["agent", "linked"]), chain: z.enum(["ethereum", "base"]), spoke: z.string().optional() }).describe("Close the whole Aave v4 position with a flash loan through the shared executor. Debt, collateral and swap route are read when it fires. Use this for a scheduled unwind."),
+          z.object({ type: z.literal("aave_v3_unwind"), wallet: z.enum(["agent", "linked"]), chain: z.enum(["ethereum", "arbitrum", "base"]) }).describe("Close the Aave v3 position with a flash loan through the shared executor: repay the debt, withdraw the collateral, sell just enough of it, return the rest. Debt, collateral, lender and swap route are read when it fires. Use this for \"protect my Aave position\" and for any scheduled Aave v3 unwind. Pair it with an aave_v3_health_factor condition on the same wallet and chain, or a price condition."),
           z.object({ type: z.literal("swap"), fromChain: z.enum(EVM_CHAINS), toChain: z.enum(EVM_CHAINS), fromToken: z.string().describe("Symbol or address, or native"), toToken: z.string(), amount: z.string().regex(/^\d+(\.\d+)?$/).describe("Whole units of fromToken") }).describe("Swap or route any token through LI.FI, quoted when it fires. Use it for a recurring buy (DCA / SIP) of any token on an EVM chain."),
           z.object({ type: z.literal("hyperliquid"), op: z.literal("spot"), pair: z.string(), side: z.enum(["buy", "sell"]), usd: z.number().positive() }).describe("Hyperliquid spot order. At least 10 USD and one lot."),
           z.object({ type: z.literal("hyperliquid"), op: z.literal("open"), coin: z.string(), side: z.enum(["long", "short"]), marginUsd: z.number().positive(), leverage: z.number().int().min(1) }),
@@ -439,6 +457,18 @@ export function buildTools(ctx: ToolContext) {
         return act("evm_transactions", { chain: a.chain, transactions: [tx] }, {
           venue: "Aave v4 unwind", chain: CHAINS[a.chain].name, summary, sources: [`Shared executor ${flash.executorAddress()}`, "https://api.aave.com/graphql"],
           simulation: { method: "sponsored eth_estimateGas", results: [{ index: 0, status: "success", gasUsed: sim.gas }] }, transactions: [{ ...tx, chainId: CHAINS[a.chain].chainId }],
+        }, a.usdValue);
+      })),
+
+    tool("aave_v3_unwind", `Close an Aave v3 position on Ethereum, Arbitrum or Base in one transaction through the shared FlashExecutor (${flash.executorAddress()}): flash-borrow the debt (Morpho with no fee when it holds enough, else Aave v3), repay all of it, withdraw the collateral that pays for it, sell just enough of that collateral for the loan on an on-chain DEX route, and return the rest to the same wallet. Other deposits stay in Aave. One debt token only. Everything is read now (debt, collateral, lender, swap route). wallet=linked needs an active permission with delegate = the executor for: the Aave Pool repay(address,uint256,uint256,address) and withdraw(address,uint256,address), and approve(address,uint256) on the debt token. To do it later at a health factor or a price, use job_schedule with action type aave_v3_unwind (it is built again when it fires). The agent wallet sends the run; the gas sponsor pays.`,
+      { chain: z.enum(["ethereum", "arbitrum", "base"]), wallet: z.enum(["agent", "linked"]).default("agent"), slippagePct: z.number().min(0.1).max(5).optional().describe("Default 1"), usdValue: z.number().min(0).describe("USD value of the debt") },
+      run(async (a) => {
+        const { tx, summary } = await buildAaveV3Unwind(ctx.userId, { chain: a.chain, wallet: a.wallet, slippageBps: a.slippagePct ? Math.round(a.slippagePct * 100) : undefined });
+        const simulation = await simulateAsSent(a.chain, [tx]);
+        if (simulation.results[0]?.status === "revert") throw new Error(`Simulation: the unwind reverts (${simulation.results[0].error}). Nothing was sent.`);
+        return act("evm_transactions", { chain: a.chain, transactions: [tx] }, {
+          venue: "Aave v3 unwind", chain: CHAINS[a.chain].name, summary, sources: [`Shared executor ${flash.executorAddress()}`, "@bgd-labs/aave-address-book", "https://li.quest/v1/quote/toAmount"],
+          simulation, transactions: [{ ...tx, chainId: CHAINS[a.chain].chainId }],
         }, a.usdValue);
       })),
 
@@ -549,7 +579,7 @@ export function buildTools(ctx: ToolContext) {
         return act("hl_spot_order", { ...a, pair: m.pair }, { venue: "Hyperliquid spot", market: m.pair, side: a.side, size, markPx: m.markPx, usd: size * m.markPx }, size * m.markPx);
       })),
 
-    tool("flash_run", `Run a flash loan, an unwind, a leveraged position or any multi-step plan through the shared FlashExecutor contract, deployed one time on Ethereum, Arbitrum, Base and Robinhood Chain. Do not write or deploy a contract for this. Describe the steps: from=executor runs the call from the executor (it holds the borrowed tokens; use it to swap or to send tokens to a wallet), from=agent makes the agent wallet call, from=linked makes the user's own wallet call (it needs an active permission whose delegate is the executor: ask with linked_wallet_request_permission and delegate=${flash.executorAddress()}). The loan comes from Morpho (no fee, Ethereum and Base) or Aave v3 (all but Robinhood), and is repaid after the steps, so the executor must hold 'amount' (plus the Aave premium) of the token at the end of the steps. Everything left in the executor of the 'sweep' tokens goes to the agent wallet. A wallet that must pay the executor uses transfer, never approve. The run is simulated first. The executor is live at ${flash.executorAddress()} on Ethereum, Arbitrum, Base and Robinhood Chain.`,
+    tool("flash_run", `Run a flash loan, an unwind, a leveraged position or any multi-step plan through the shared FlashExecutor contract, deployed one time on Ethereum, Arbitrum, Base and Robinhood Chain. Do not write or deploy a contract for this. Describe the steps: from=executor runs the call from the executor (it holds the borrowed tokens; use it to swap or to send tokens to a wallet), from=agent makes the agent wallet call, from=linked makes the user's own wallet call (it needs an active permission whose delegate is the executor: ask with linked_wallet_request_permission and delegate=${flash.executorAddress()}). The loan comes from Morpho (no fee, Ethereum, Arbitrum and Base) or Aave v3 (all but Robinhood), and is repaid after the steps, so the executor must hold 'amount' (plus the Aave premium) of the token at the end of the steps. Everything left in the executor of the 'sweep' tokens goes to the agent wallet. A wallet that must pay the executor uses transfer, never approve. For a swap step, take a LI.FI quote with allowExchanges=kyberswap,1inch,sushiswap,paraswap,openocean (an RFQ or intent route fails inside a flash loan). The run is simulated first, and it is built for now: to repeat it later, use job_schedule with aave_v3_unwind or aave_v4_unwind, or agent_task, never fixed transactions. The executor is live at ${flash.executorAddress()} on Ethereum, Arbitrum, Base and Robinhood Chain.`,
       {
         chain: z.enum(flash.EXECUTOR_CHAINS),
         lender: z.enum(["none", "morpho", "aave_v3"]),
@@ -592,7 +622,7 @@ export function buildTools(ctx: ToolContext) {
     tool("job_cancel", "Cancel an active scheduled job by id.",
       { jobId: z.string() }, run(async ({ jobId }) => ({ cancelled: await jobs.cancelJob(jobId, ctx.userId) }))),
 
-    tool("guard_register_aave", "Register a liquidation guard for the agent wallet's Aave position. A watcher checks the health factor every few seconds. When it is below the threshold, the watcher sends `triggerTx` from the agent wallet, exactly as stored. Build and deploy the unwind first (your own flash-loan contract or an Aave adapter call), test it on a fork, and give the transaction that starts it. The trigger transaction is simulated now and must not revert for a reason other than 'position is healthy'.",
+    tool("guard_register_aave", "Register a liquidation guard that sends one fixed transaction from the agent wallet when the Aave v3 health factor falls below the threshold. Use it only for a call to your own deployed contract whose calldata never goes stale. For \"protect my Aave position\" use job_schedule with an aave_v3_health_factor condition and the aave_v3_unwind action instead: it is built again from live data when it fires. Never store a flash_run here. The trigger transaction is simulated now and must not revert for a reason other than 'position is healthy'.",
       {
         chain: z.enum(["ethereum", "arbitrum", "base"]),
         healthFactorThreshold: z.number().min(1.02).max(3).describe("Default 1.15"),
@@ -603,6 +633,7 @@ export function buildTools(ctx: ToolContext) {
       },
       run(async (a) => {
         const tx = toEvmTx(a.triggerTx);
+        if (tx.to?.toLowerCase() === flash.executorAddress().toLowerCase()) throw new Error("A flash run goes stale (a one-hour permission and a swap quote). Use job_schedule with the aave_v3_unwind action and an aave_v3_health_factor condition.");
         if (!tx.to || !(await evm.hasCode(a.chain, tx.to))) throw new Error("The trigger target has no contract code. Deploy the unwind contract first.");
         const account = await aave.getAccount(a.chain, address);
         if (account.healthFactor === null) throw new Error("The agent wallet has no Aave debt on this chain. A guard needs a borrow position.");
@@ -619,7 +650,7 @@ export function buildTools(ctx: ToolContext) {
 
 export const TOOL_NAMES = [
   "wallet_overview", "rates_compare", "hl_markets", "hl_account", "hl_outcomes", "sol_quote", "bridge_quote", "bridge_status", "aave_account", "aave_v4_markets", "aave_v4_account", "evm_simulate",
-  "hl_open_position", "hl_close_position", "hl_set_tpsl", "hl_open_orders", "hl_cancel_order", "aave_supply_borrow", "bridge", "evm_send_transactions", "guard_register_aave", "aave_v4_action", "hl_deposit", "job_schedule", "job_list", "job_cancel", "flash_run", "aave_v4_unwind", "swap", "hl_spot_order", "hl_action", "hl_info", "solana_overview", "sol_swap", "solana_send_transaction", "wallet_sign_typed_data", "memory_save", "memory_recall", "memory_forget",
+  "hl_open_position", "hl_close_position", "hl_set_tpsl", "hl_open_orders", "hl_cancel_order", "aave_supply_borrow", "bridge", "evm_send_transactions", "guard_register_aave", "aave_v4_action", "hl_deposit", "job_schedule", "job_list", "job_cancel", "flash_run", "aave_v4_unwind", "aave_v3_unwind", "swap", "hl_spot_order", "hl_action", "hl_info", "solana_overview", "sol_swap", "solana_send_transaction", "wallet_sign_typed_data", "memory_save", "memory_recall", "memory_forget",
   "linked_wallet_overview", "linked_wallet_ask_to_sign", "linked_wallet_request_permission", "linked_wallet_permission_context", "linked_wallet_send_transactions",
 ];
 export const allToolNames = () => TOOL_NAMES.map((t) => `mcp__${SERVER_NAME}__${t}`);

@@ -194,6 +194,9 @@ alter table jobs add column if not exists repeat_seconds integer;
 alter table jobs add column if not exists repeat_times integer;
 alter table jobs add column if not exists runs_done integer not null default 0;
 alter table jobs add column if not exists not_before timestamptz;
+-- Failed attempts of the current run (a short outage of a quote API or an RPC), and when the current run started.
+alter table jobs add column if not exists attempts integer not null default 0;
+alter table jobs add column if not exists started_at timestamptz;
 
 -- The memory of the agent: lessons it learned (fixes, routes, facts), for all users or for one user.
 create table if not exists agent_memory (

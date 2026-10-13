@@ -1,6 +1,6 @@
 // The chat agent loop. It runs the Claude Agent SDK with the typed DeFi tools, the project skills and a terminal.
 // SDK reference: https://code.claude.com/docs/en/agent-sdk/typescript
-import { cpSync, existsSync, mkdirSync } from "node:fs";
+import { cpSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { query, type Options, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
@@ -88,17 +88,18 @@ const PRODUCT_SKILLS = ["hyperliquid", "tempo-mpp", "solana-defi", "evm-lending"
 
 const REPO_ROOT = path.resolve(fileURLToPath(new URL("../../../../", import.meta.url)));
 
-/** One directory per user. The skills are copied in so the agent loads them as project skills. */
+/**
+ * One directory per user. The skills are copied in so the agent loads them as project skills. They are copied on each run,
+ * so a corrected skill reaches a workspace that already exists.
+ */
 function workspaceFor(userId: string): { cwd: string; configDir: string } {
   const base = path.resolve(config().WORKSPACES_DIR, userId.toLowerCase().replace(/[^a-z0-9]/g, ""));
   const cwd = path.join(base, "work");
   const configDir = path.join(base, "config");
   mkdirSync(configDir, { recursive: true });
   const skills = path.join(cwd, ".claude", "skills");
-  if (!existsSync(skills)) {
-    mkdirSync(path.dirname(skills), { recursive: true });
-    cpSync(path.join(REPO_ROOT, ".claude", "skills"), skills, { recursive: true });
-  }
+  mkdirSync(skills, { recursive: true });
+  for (const name of PRODUCT_SKILLS) cpSync(path.join(REPO_ROOT, ".claude", "skills", name), path.join(skills, name), { recursive: true, force: true });
   return { cwd, configDir };
 }
 
@@ -110,6 +111,11 @@ export interface RunArgs {
   signal?: AbortSignal;
   /** Test mode: every action waits for a confirmation that never comes, so nothing executes, and no lesson is saved. */
   dryRun?: boolean;
+  /**
+   * A run of a scheduled job. The user approved the job, so its actions execute without a click (the limit per action
+   * still applies), and a chat message of the user does not go to this run.
+   */
+  scheduled?: boolean;
 }
 
 /** The open input of one running agent. A message sent during the run goes into it and the agent reads it before its next step. */
@@ -176,7 +182,7 @@ async function* runOne(args: RunArgs): AsyncGenerator<AgentEvent> {
   };
   const pending: Intent[] = [];
   const payboxAuth = await payboxToken(args.userId).catch(() => null);
-  const wallet = { ...(await getOrCreateWallet(args.userId)), ...(args.dryRun ? { autoExecute: false } : {}) };
+  const wallet = { ...(await getOrCreateWallet(args.userId)), ...(args.scheduled ? { autoExecute: true } : {}), ...(args.dryRun ? { autoExecute: false } : {}) };
   const permissions: Permission[] = [];
   const walletRequests: WalletRequest[] = [];
   const server = buildTools({ userId: args.userId, wallet, onIntent: (i) => pending.push(i), onPermission: (p) => permissions.push(p), onWalletRequest: (r) => walletRequests.push(r) });
@@ -229,7 +235,7 @@ async function* runOne(args: RunArgs): AsyncGenerator<AgentEvent> {
   // Streaming input: the first prompt starts the run. The input stays open, so a later message reaches the same run without an interrupt.
   // It closes when a turn ends and no message waits.
   const inbox: RunInbox = { queue: [], closed: false, wake: null };
-  inboxes.set(args.userId, inbox);
+  if (!args.scheduled) inboxes.set(args.userId, inbox);
   async function* input(): AsyncGenerator<SDKUserMessage> {
     // A new chat starts with the memory. A resumed chat has it already.
     yield userMessage(args.resume ? args.prompt : `${await memoryBlock(args.userId)}${args.prompt}`);

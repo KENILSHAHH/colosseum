@@ -5,7 +5,7 @@ import { randomBytes } from "node:crypto";
 import * as aave from "./adapters/aave";
 import * as aaveV4 from "./adapters/aaveV4";
 import * as evm from "./adapters/evm";
-import type { EvmTx } from "./adapters/evm";
+import { SentError, type EvmTx } from "./adapters/evm";
 import * as hl from "./adapters/hyperliquid";
 import { config } from "./config";
 import { sql } from "./db";
@@ -13,7 +13,8 @@ import { getLinkedWallet, wrapDelegatedTransactions, type DelegationChain } from
 import { sendTransactions } from "./executors/evm";
 import { CHAINS, type ChainKey } from "./registry/chains";
 import { isSponsored, simulateSponsored } from "./sponsor";
-import { buildAaveV4Unwind } from "./unwind";
+import { executorAddress } from "./flashExecutor";
+import { buildAaveV3Unwind, buildAaveV4Unwind } from "./unwind";
 import { routeTransactions } from "./adapters/lifi";
 import { spotMarket, spotSize } from "./executors/hyperliquid";
 import { getOrCreateWallet } from "./wallet";
@@ -36,6 +37,8 @@ export type JobAction =
   | { type: "aave_v4"; wallet: "agent" | "linked"; steps: { action: aaveV4.V4Action; reserveId: string; amount: string; max?: boolean; native?: boolean }[] }
   /** Close a whole Aave v4 position in one transaction with a flash loan. The debt, the collateral and the swap are read when it fires. */
   | { type: "aave_v4_unwind"; wallet: "agent" | "linked"; chain: "ethereum" | "base"; spoke?: string }
+  /** Close an Aave v3 position in one transaction with a flash loan. The debt, the collateral and the swap are read when it fires. */
+  | { type: "aave_v3_unwind"; wallet: "agent" | "linked"; chain: aave.AaveChain }
   /** Swap or route any token through LI.FI. The route is quoted when the job fires. */
   | { type: "swap"; fromChain: ChainKey; toChain: ChainKey; fromToken: string; toToken: string; amount: string }
   /** A Hyperliquid action: a spot order, a perp position, or a close. Built from live data when the job fires. */
@@ -48,7 +51,7 @@ export type JobAction =
 /** Repeat a job: after each run it waits `everySeconds`, until it ran `times` times. */
 export interface JobRepeat { everySeconds: number; times: number }
 
-const isEvmAction = (a: JobAction) => a.type === "transactions" || a.type === "aave_v4" || a.type === "aave_v4_unwind" || a.type === "swap";
+const isUnwind = (a: JobAction) => a.type === "aave_v3_unwind" || a.type === "aave_v4_unwind";
 
 export type JobStatus = "active" | "running" | "done" | "failed" | "cancelled" | "expired";
 
@@ -56,6 +59,7 @@ interface Row {
   id: string; user_id: string; name: string; condition: JobCondition; action: JobAction; status: JobStatus;
   last_value: string | null; last_check: Date | null; expires_at: Date; result: Record<string, unknown> | null; created_at: Date;
   repeat_seconds: number | null; repeat_times: number | null; runs_done: number | null; not_before: Date | null;
+  attempts: number | null; started_at: Date | null;
 }
 export interface Job {
   id: string; name: string; condition: JobCondition; conditionText: string; action: JobAction; status: JobStatus;
@@ -119,6 +123,10 @@ export async function buildJobTransactions(userId: string, action: JobAction): P
     const { tx } = await buildAaveV4Unwind(userId, action);
     return { chain: action.chain, from: agent, transactions: [tx] };
   }
+  if (action.type === "aave_v3_unwind") {
+    const { tx } = await buildAaveV3Unwind(userId, action);
+    return { chain: action.chain, from: agent, transactions: [tx] };
+  }
   if (action.type === "transactions") {
     chain = action.chain;
     txs = action.transactions;
@@ -154,6 +162,20 @@ async function simulateOrThrow(userId: string, chain: ChainKey, from: `0x${strin
  * contract that checks the health factor itself). The agent must then prove it on a fork.
  */
 export async function checkJob(userId: string, args: { condition: JobCondition; action: JobAction; allowRevertNow?: boolean; repeat?: JobRepeat }) {
+  const a = args.action, c = args.condition;
+  // A flash run holds a permission that ends one hour after it was signed, and a swap quote that ends sooner. Stored as fixed
+  // calldata it fails when the job fires. The unwind actions build it again at that moment.
+  if (a.type === "transactions" && a.transactions.some((t) => t.to?.toLowerCase() === executorAddress().toLowerCase()))
+    throw new Error("A flash run cannot be stored as fixed transactions: its one-hour permission and its swap quote would be stale when the job fires. Use the action aave_v3_unwind or aave_v4_unwind (built again when it fires), or agent_task with the full plan.");
+  // An unwind protects the position that the condition watches. Another wallet or another chain is a mistake.
+  if (isUnwind(a) && (c.type === "aave_v3_health_factor" || c.type === "aave_v4_health_factor")) {
+    const owner = a.wallet === "linked" ? await getLinkedWallet(userId) : (await getOrCreateWallet(userId)).address;
+    if (!owner) throw new Error("The user has no linked wallet.");
+    if (c.address.toLowerCase() !== owner.toLowerCase()) throw new Error(`The condition watches ${c.address}, but the unwind closes the position of the ${a.wallet} wallet ${owner}. Use the same address.`);
+    if (a.type === "aave_v3_unwind" && c.type !== "aave_v3_health_factor") throw new Error("An Aave v3 unwind needs an aave_v3_health_factor condition (or a price or a time).");
+    if (a.type === "aave_v4_unwind" && c.type !== "aave_v4_health_factor") throw new Error("An Aave v4 unwind needs an aave_v4_health_factor condition (or a price or a time).");
+    if (a.type === "aave_v3_unwind" && c.type === "aave_v3_health_factor" && c.chain !== a.chain) throw new Error(`The condition watches ${CHAINS[c.chain].name}, but the unwind is on ${CHAINS[a.chain].name}.`);
+  }
   const now = await evaluate(args.condition);
   if (args.condition.type !== "time" && now.value === null) throw new Error("The condition has no live value now. Check the asset name, the address or the spoke.");
   // A time in the past fires at the next check. That is the way to start a repeated job now.
@@ -218,26 +240,43 @@ async function runAction(userId: string, name: string, action: JobAction): Promi
     return ex.executeOpen(userId, hlAddress, { coin: action.coin, side: action.side, marginUsd: action.marginUsd, leverage: action.leverage }, String(preview.limitPx));
   }
   if (action.type === "agent_task") {
-    // The agent runs the instruction with the tools and the settings of the user. Imported here: the agent loop imports this file.
+    // The agent runs the instruction with the tools of the user. The user approved the job, so its actions run without a
+    // second click (the limit per action still applies). Imported here: the agent loop imports this file.
     const { runChatAgent } = await import("./agent/run");
     let text = "";
-    const actions: unknown[] = [];
-    for await (const ev of runChatAgent({ userId, prompt: `This is a scheduled job named "${name}". The user is not watching. Do this now, completely, with your tools: ${action.instruction}` })) {
+    const actions = new Map<string, { kind: string; status: string; result: unknown }>();
+    for await (const ev of runChatAgent({ userId, scheduled: true, prompt: `This is a scheduled job named "${name}". The user is not watching and approved this job before. Do this now, completely, with your tools: ${action.instruction}` })) {
       if (ev.type === "text") text += ev.delta;
-      else if (ev.type === "intent") actions.push({ kind: ev.intent.kind, status: ev.intent.status, result: ev.intent.result });
-      else if (ev.type === "error") throw new Error(ev.message);
+      // An intent is reported when it is made and again when it ends. Keep its last state.
+      else if (ev.type === "intent") actions.set(ev.intent.id, { kind: ev.intent.kind, status: ev.intent.status, result: ev.intent.result });
+      else if (ev.type === "error") throw new SentError(ev.message);
     }
-    return { reply: text.trim().slice(0, 2000), actions };
+    const list = [...actions.values()];
+    const failed = list.filter((x) => x.status === "failed");
+    return { reply: text.trim().slice(0, 2000), actions: list, ...(failed.length ? { error: `${failed.length} of ${list.length} action(s) failed.` } : {}) };
   }
   const built = await buildJobTransactions(userId, action);
   await simulateOrThrow(userId, built.chain, built.from, built.transactions);
-  const sent = await sendTransactions(userId, built.chain, built.transactions);
+  // An unwind protects a position: the daily limit of sponsored transactions does not stop it.
+  const sent = await sendTransactions(userId, built.chain, built.transactions, { critical: isUnwind(action) });
   return { chain: built.chain, transactions: sent };
+}
+
+/**
+ * How a failed run is tried again. A failure before anything was sent (a quote API with no route for a minute, an RPC that
+ * refused a read, a simulation that reverts) is tried again soon, and the run is not used up. A send whose result is not
+ * known is never tried again: it could buy or move twice. An agent task is not tried again either: it can have acted.
+ */
+function retryPlan(action: JobAction, err: unknown, attempts: number): { retryInSeconds: number } | null {
+  if (err instanceof SentError || action.type === "agent_task") return null;
+  // An unwind protects a position near liquidation: try every 30 seconds for 20 minutes while the condition stays true.
+  if (isUnwind(action)) return attempts < 40 ? { retryInSeconds: 30 } : null;
+  return attempts < 5 ? { retryInSeconds: 60 * 2 ** (attempts - 1) } : null;
 }
 
 async function runJob(r: Row) {
   // The status change is atomic, so two loops cannot run one job.
-  const [claimed] = await sql()<Row[]>`update jobs set status = 'running' where id = ${r.id} and status = 'active' returning *`;
+  const [claimed] = await sql()<Row[]>`update jobs set status = 'running', started_at = now() where id = ${r.id} and status = 'active' returning *`;
   if (!claimed) return;
   try {
     const result = { firedAt: new Date().toISOString(), ...(await runAction(r.user_id, r.name, r.action)) };
@@ -246,22 +285,45 @@ async function runJob(r: Row) {
     if (r.repeat_seconds && runs < (r.repeat_times ?? 1)) {
       const next = new Date(Date.now() + r.repeat_seconds * 1000);
       const condition = r.condition.type === "time" ? { ...r.condition, at: new Date(new Date(r.condition.at).getTime() + r.repeat_seconds * 1000 * Math.max(1, Math.ceil((Date.now() - new Date(r.condition.at).getTime()) / (r.repeat_seconds * 1000)))).toISOString() } : r.condition;
-      await sql()`update jobs set status = 'active', runs_done = ${runs}, not_before = ${next}, condition = ${sql().json(condition as never)}, result = ${sql().json(result as never)} where id = ${r.id}`;
+      await sql()`update jobs set status = 'active', runs_done = ${runs}, attempts = 0, not_before = ${next}, condition = ${sql().json(condition as never)}, result = ${sql().json(result as never)} where id = ${r.id}`;
     } else {
-      await sql()`update jobs set status = 'done', runs_done = ${runs}, result = ${sql().json(result as never)} where id = ${r.id}`;
+      await sql()`update jobs set status = 'done', runs_done = ${runs}, attempts = 0, result = ${sql().json(result as never)} where id = ${r.id}`;
     }
     console.log(`job ${r.id} (${r.name}) run ${runs} done for ${r.user_id}`);
   } catch (err) {
     const error = (err instanceof Error ? err.message : String(err)).split("\n")[0]!.slice(0, 400);
+    const attempts = (r.attempts ?? 0) + 1;
+    const retry = retryPlan(r.action, err, attempts);
+    if (retry) {
+      // The same run again soon. A condition that is no longer true waits, as before.
+      const at = new Date(Date.now() + retry.retryInSeconds * 1000);
+      await sql()`update jobs set status = 'active', attempts = ${attempts}, not_before = ${at}, result = ${sql().json({ firedAt: new Date().toISOString(), error, attempt: attempts, retryAt: at.toISOString() } as never)} where id = ${r.id}`;
+      console.error(`job ${r.id} (${r.name}) attempt ${attempts} failed for ${r.user_id}, next try ${at.toISOString()}: ${error}`);
+      return;
+    }
     const runs = (r.runs_done ?? 0) + 1;
     // A repeated job keeps its schedule after a failed run (for example a day with no funds). A single job ends as failed.
     if (r.repeat_seconds && runs < (r.repeat_times ?? 1)) {
       const condition = r.condition.type === "time" ? { ...r.condition, at: new Date(Date.now() + r.repeat_seconds * 1000).toISOString() } : r.condition;
-      await sql()`update jobs set status = 'active', runs_done = ${runs}, not_before = ${new Date(Date.now() + r.repeat_seconds * 1000)}, condition = ${sql().json(condition as never)}, result = ${sql().json({ firedAt: new Date().toISOString(), error } as never)} where id = ${r.id}`;
+      await sql()`update jobs set status = 'active', runs_done = ${runs}, attempts = 0, not_before = ${new Date(Date.now() + r.repeat_seconds * 1000)}, condition = ${sql().json(condition as never)}, result = ${sql().json({ firedAt: new Date().toISOString(), error } as never)} where id = ${r.id}`;
     } else {
-      await sql()`update jobs set status = 'failed', result = ${sql().json({ firedAt: new Date().toISOString(), error } as never)} where id = ${r.id}`;
+      await sql()`update jobs set status = 'failed', runs_done = ${runs}, result = ${sql().json({ firedAt: new Date().toISOString(), error } as never)} where id = ${r.id}`;
     }
     console.error(`job ${r.id} (${r.name}) failed for ${r.user_id}: ${error}`);
+  }
+}
+
+/**
+ * A run that was in progress when the server stopped (a deploy restarts it) stays "running". An unwind is safe to run
+ * again: it reads the position first, and it stops when no debt is left. Any other action could act twice, so it ends as failed.
+ */
+async function recoverInterrupted() {
+  const rows = await sql()<Row[]>`select * from jobs where status = 'running' and (started_at is null or started_at < now() - interval '2 minutes')`;
+  for (const r of rows) {
+    const error = "The server restarted during this run. Its result is not known. Check the wallet before you schedule it again.";
+    if (isUnwind(r.action)) await sql()`update jobs set status = 'active', attempts = coalesce(attempts, 0) + 1 where id = ${r.id} and status = 'running'`;
+    else await sql()`update jobs set status = 'failed', result = ${sql().json({ firedAt: r.started_at?.toISOString() ?? null, error } as never)} where id = ${r.id} and status = 'running'`;
+    console.error(`job ${r.id} (${r.name}) was interrupted by a restart: ${isUnwind(r.action) ? "it runs again" : "marked failed"}`);
   }
 }
 
@@ -272,16 +334,21 @@ export async function tickJobs() {
   try {
     await sql()`update jobs set status = 'expired' where status = 'active' and expires_at < now()`;
     const rows = await sql()<Row[]>`select * from jobs where status = 'active' and (not_before is null or not_before <= now()) order by created_at`;
-    for (const r of rows) {
+    // Unwinds first: they protect positions. Reads of different jobs run side by side, so one slow source does not delay the rest.
+    rows.sort((x, y) => Number(isUnwind(y.action)) - Number(isUnwind(x.action)));
+    const fire: Row[] = [];
+    await Promise.all(rows.map(async (r) => {
       try {
         const now = await evaluate(r.condition);
         await sql()`update jobs set last_value = ${now.value}, last_check = now() where id = ${r.id}`;
-        if (now.met) await runJob(r);
+        if (now.met) fire.push(r);
       } catch (err) {
         // A source that does not answer is not a trigger. The next tick reads it again.
         console.error(`job ${r.id}: the condition was not read:`, err instanceof Error ? err.message.split("\n")[0] : err);
       }
-    }
+    }));
+    // A run does not hold the loop: a long agent task must not delay an unwind. The claim in runJob stops a second start.
+    for (const r of fire) void runJob(r).catch((err) => console.error(`job ${r.id}: the run did not start:`, err instanceof Error ? err.message.split("\n")[0] : err));
   } finally {
     ticking = false;
   }
@@ -289,5 +356,6 @@ export async function tickJobs() {
 
 /** Start the loop in the API process. */
 export function startJobRunner() {
+  void recoverInterrupted().catch((err) => console.error("jobs: recovery failed:", err));
   setInterval(() => void tickJobs(), config().JOB_INTERVAL_SECONDS * 1000).unref();
 }

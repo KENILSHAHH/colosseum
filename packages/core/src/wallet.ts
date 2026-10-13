@@ -1,7 +1,7 @@
 // The wallet of a user. It is the Privy wallet of the user when the user added the server signer to it: Privy keeps the key
 // in parts, and the server signs through the signer that the user can remove. Else it is the legacy key of this server
 // (encrypted at rest with AES-256-GCM). The legacy key stays the Hyperliquid account of the user, where its positions are.
-import { createPublicClient, createWalletClient, defineChain, erc20Abi, formatUnits, http, type Address } from "viem";
+import { createPublicClient, createWalletClient, defineChain, erc20Abi, formatUnits, http, type Address, type Hex, type TransactionReceipt } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { config } from "./config";
 import { decrypt, encrypt } from "./crypto";
@@ -85,6 +85,25 @@ export function viemChain(chain: ChainKey) {
 }
 
 export const publicClient = (chain: ChainKey) => createPublicClient({ chain: viemChain(chain), transport: http() });
+
+/**
+ * Wait for the receipt of a sent transaction. A public RPC can refuse a read for a short time (a rate limit, or a
+ * Cloudflare check on Robinhood Chain). That is not a failure of the transaction, so the read is tried again until the timeout.
+ */
+export async function waitForReceipt(chain: ChainKey, hash: Hex, timeoutMs = 180_000): Promise<TransactionReceipt> {
+  const client = publicClient(chain);
+  const end = Date.now() + timeoutMs;
+  let lastError = "no receipt yet";
+  for (;;) {
+    try {
+      return await client.getTransactionReceipt({ hash });
+    } catch (err) {
+      lastError = (err instanceof Error ? err.message : String(err)).split("\n")[0]!.slice(0, 160);
+    }
+    if (Date.now() > end) throw new Error(`The transaction ${hash} was sent on ${CHAINS[chain].name}, but its receipt was not read in ${Math.round(timeoutMs / 1000)} s (${lastError}). Check it in the explorer: ${CHAINS[chain].explorer}/tx/${hash}`);
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+}
 
 export async function signerClient(userId: string, chain: ChainKey) {
   return createWalletClient({ account: await walletAccount(userId), chain: viemChain(chain), transport: http() });

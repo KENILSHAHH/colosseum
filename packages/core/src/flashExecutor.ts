@@ -20,8 +20,15 @@ const CREATE2_DEPLOYER = "0x4e59b44847b379578588920cA78FbF26c0B4956C" as const;
 /** Chains where the executor runs: the DelegationManager and the enforcer have the same address on each, so the executor does too. */
 export const EXECUTOR_CHAINS = ["ethereum", "arbitrum", "base", "robinhood"] as const satisfies readonly ChainKey[];
 export type ExecutorChain = (typeof EXECUTOR_CHAINS)[number];
-/** Morpho Blue. Source: https://docs.morpho.org/get-started/resources/addresses (read on-chain on 2026-10-12: Ethereum and Base). */
-export const MORPHO: Partial<Record<ExecutorChain, Address>> = { ethereum: "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb", base: "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb" };
+/**
+ * Morpho Blue. Source: https://docs.morpho.org/get-started/resources/addresses (read on-chain on 2026-10-12: Ethereum and Base;
+ * Arbitrum listed in the same page and read on-chain on 2026-10-16).
+ */
+export const MORPHO: Partial<Record<ExecutorChain, Address>> = {
+  ethereum: "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb",
+  base: "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb",
+  arbitrum: "0x6c247b1F6182318877311737BaC0844bAa518F5e",
+};
 
 const env = (chain: ChainKey) => getSmartAccountsEnvironment(CHAINS[chain].chainId!);
 const argsEnforcer = (chain: ChainKey) => env(chain).caveatEnforcers.ArgsEqualityCheckEnforcer as Address;

@@ -18,11 +18,11 @@ import { DelegationManager } from "@metamask/smart-accounts-kit/contracts";
 import { SIGNABLE_DELEGATION_TYPED_DATA } from "@metamask/smart-accounts-kit/utils";
 import { concat, createWalletClient, getContractAddress, http, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import type { EvmTx } from "./adapters/evm";
+import { SentError, simulate, type EvmTx } from "./adapters/evm";
 import { config } from "./config";
 import { sql } from "./db";
 import { CHAINS, type ChainKey } from "./registry/chains";
-import { legacyAccount, publicClient, viemChain, walletAccount } from "./wallet";
+import { legacyAccount, publicClient, viemChain, waitForReceipt, walletAccount } from "./wallet";
 
 export const SPONSORED_CHAINS = ["ethereum", "arbitrum", "base", "robinhood", "polygon"] as const satisfies readonly ChainKey[];
 /** Deterministic deployment proxy (CREATE2). A delegated wallet cannot use CREATE through `execute`, so a deployment goes through it. */
@@ -63,7 +63,7 @@ async function upgrade(owner: Awaited<ReturnType<typeof walletAccount>>, chain: 
   const relayer = createWalletClient({ account: sponsor(), chain: viemChain(chain), transport: http() });
   const authorization = await createWalletClient({ account: owner, chain: viemChain(chain), transport: http() }).signAuthorization({ contractAddress: implementation });
   const h = await relayer.sendTransaction({ authorizationList: [authorization], to: owner.address, data: "0x" });
-  const r = await publicClient(chain).waitForTransactionReceipt({ hash: h, timeout: 120_000 });
+  const r = await waitForReceipt(chain, h, 120_000);
   if (r.status !== "success") throw new Error(`The wallet upgrade ${h} reverted.`);
 }
 
@@ -136,15 +136,32 @@ export async function simulateSponsored(userId: string, chain: ChainKey, txs: Ev
     const gas = await withRetry(() => reader.estimateGas({ account: relayer.account, to: manager, data, stateOverride }));
     return { ok: true, gas: gas.toString(), error: null };
   } catch (err) {
-    return { ok: false, gas: null, error: (err instanceof Error ? err.message : String(err)).split("\n").slice(0, 3).join(" ").slice(0, 400) };
+    return { ok: false, gas: null, error: await explainRevert(chain, owner.address, txs, err) };
   }
 }
 
-export async function sendSponsored(userId: string, chain: ChainKey, txs: EvmTx[], opts: { legacy?: boolean } = {}): Promise<SponsoredResult> {
+/**
+ * A reverted batch gives only "execution reverted" through the DelegationManager. A plain simulation from the wallet
+ * names the call that fails and its reason, so the agent and the user see what to fix.
+ */
+async function explainRevert(chain: ChainKey, from: Address, txs: EvmTx[], err: unknown): Promise<string> {
+  const base = (err instanceof Error ? err.message : String(err)).split("\n").slice(0, 2).join(" ").slice(0, 240);
+  try {
+    const sim = await simulate(chain, from, txs);
+    const bad = sim.results.find((r) => r.status === "revert");
+    if (bad) return `call ${bad.index + 1} of ${txs.length} ("${bad.description}") reverts: ${bad.error ?? "no reason"}`.slice(0, 400);
+  } catch {
+    // The plain simulation is only a hint.
+  }
+  return base;
+}
+
+/** `critical`: a protective action (a scheduled unwind). The daily limit of sponsored transactions does not stop it. */
+export async function sendSponsored(userId: string, chain: ChainKey, txs: EvmTx[], opts: { legacy?: boolean; critical?: boolean } = {}): Promise<SponsoredResult> {
   if (!isSponsored(chain)) throw new Error(`Gas sponsorship is not available on ${CHAINS[chain].name}.`);
   const limit = config().SPONSOR_DAILY_TXS;
   const [used] = await sql()<{ n: string }[]>`select count(*) as n from sponsored_txs where user_id = ${userId} and created_at > now() - interval '24 hours'`;
-  if (Number(used?.n ?? 0) >= limit) throw new Error(`The daily limit of ${limit} sponsored transactions is reached. Try again tomorrow.`);
+  if (!opts.critical && Number(used?.n ?? 0) >= limit) throw new Error(`The daily limit of ${limit} sponsored transactions is reached. Try again tomorrow.`);
 
   const { owner, manager, implementation, reader, relayer, data, deployed } = await buildSponsored(userId, chain, txs, opts);
 
@@ -153,9 +170,19 @@ export async function sendSponsored(userId: string, chain: ChainKey, txs: EvmTx[
     if (balance === 0n) throw new Error(`The gas sponsor ${relayer.account.address} has no ETH on ${CHAINS[chain].name}. The operator must fund it.`);
     if (code?.toLowerCase() !== `0xef0100${implementation.slice(2).toLowerCase()}`) await upgrade(owner, chain);
     // A dry run finds a failing call before the sponsor pays for it.
-    const gas = await withRetry(() => reader.estimateGas({ account: relayer.account, to: manager, data }));
+    let gas: bigint;
+    try {
+      gas = await withRetry(() => reader.estimateGas({ account: relayer.account, to: manager, data }));
+    } catch (err) {
+      throw new Error(`Nothing was sent: ${await explainRevert(chain, owner.address, txs, err)}`);
+    }
     const hash = await relayer.sendTransaction({ to: manager, data, gas: (gas * 13n) / 10n });
-    const receipt = await reader.waitForTransactionReceipt({ hash, timeout: 180_000 });
+    let receipt;
+    try {
+      receipt = await waitForReceipt(chain, hash);
+    } catch (err) {
+      throw new SentError(err instanceof Error ? err.message : String(err));
+    }
     await sql()`insert into sponsored_txs (user_id, chain, hash, gas_cost_wei, success) values (${userId}, ${chain}, ${hash}, ${(receipt.gasUsed * receipt.effectiveGasPrice).toString()}, ${receipt.status === "success"})`;
     if (receipt.status !== "success") throw new Error(`The sponsored transaction ${hash} reverted. Nothing changed.`);
     return { hash, block: Number(receipt.blockNumber), gasUsed: receipt.gasUsed.toString(), deployed };

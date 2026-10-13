@@ -1,22 +1,21 @@
 // Send agent-built EVM transactions from the user's agent wallet, in order, and read each receipt.
 import { createWalletClient, encodeFunctionData, erc20Abi, http, parseUnits, type Address } from "viem";
-import type { EvmTx } from "../adapters/evm";
+import { SentError, type EvmTx } from "../adapters/evm";
 import { accountSender, type Sender } from "../adapters/lifi";
 import { CHAINS, USDC, type ChainKey } from "../registry/chains";
 import { isSponsored, sendSponsored } from "../sponsor";
-import { legacyAccount, publicClient, signerClient, viemChain, walletAccount } from "../wallet";
+import { legacyAccount, signerClient, viemChain, waitForReceipt, walletAccount } from "../wallet";
 
 export interface SentTx { hash: string; explorer: string; block: number; description: string; contractAddress: string | null; gasUsed: string }
 
-/** `legacy` sends from the legacy key (the Hyperliquid account) in place of the wallet. */
-export async function sendTransactions(userId: string, chain: ChainKey, txs: EvmTx[], opts: { legacy?: boolean } = {}): Promise<SentTx[]> {
+/** `legacy` sends from the legacy key (the Hyperliquid account) in place of the wallet. `critical`: a protective action, see sendSponsored. */
+export async function sendTransactions(userId: string, chain: ChainKey, txs: EvmTx[], opts: { legacy?: boolean; critical?: boolean } = {}): Promise<SentTx[]> {
   // With gas sponsorship, the sponsor sends one transaction and the wallet of the user makes all the calls in it. They succeed or fail together.
   if (isSponsored(chain)) {
     const r = await sendSponsored(userId, chain, txs, opts);
     return txs.map((tx, i) => ({ hash: r.hash, explorer: `${CHAINS[chain].explorer}/tx/${r.hash}`, block: r.block, description: tx.description, contractAddress: r.deployed[i] ?? null, gasUsed: r.gasUsed }));
   }
   const wallet = opts.legacy ? createWalletClient({ account: await legacyAccount(userId), chain: viemChain(chain), transport: http() }) : await signerClient(userId, chain);
-  const reader = publicClient(chain);
   const sent: SentTx[] = [];
   for (const [i, tx] of txs.entries()) {
     let hash: `0x${string}`;
@@ -25,10 +24,19 @@ export async function sendTransactions(userId: string, chain: ChainKey, txs: Evm
     } catch (err) {
       const msg = err instanceof Error ? err.message.split("\n")[0] : String(err);
       const hint = /insufficient funds|gas required exceeds/i.test(String(err)) ? ` The agent wallet needs ${chain === "tempo" ? "a fee stablecoin" : "native gas"} on ${CHAINS[chain].name}.` : "";
-      throw new Error(`Transaction ${i + 1} of ${txs.length} ("${tx.description}") was not sent: ${msg}.${hint} ${sent.length} earlier transaction(s) are final: ${sent.map((s) => s.hash).join(", ") || "none"}.`);
+      const text = `Transaction ${i + 1} of ${txs.length} ("${tx.description}") was not sent: ${msg}.${hint} ${sent.length} earlier transaction(s) are final: ${sent.map((s) => s.hash).join(", ") || "none"}.`;
+      throw sent.length ? new SentError(text) : new Error(text);
     }
-    const r = await reader.waitForTransactionReceipt({ hash, timeout: 180_000 });
-    if (r.status !== "success") throw new Error(`Transaction ${i + 1} ("${tx.description}") reverted on-chain: ${hash}. Earlier transactions are final.`);
+    let r;
+    try {
+      r = await waitForReceipt(chain, hash);
+    } catch (err) {
+      throw new SentError(err instanceof Error ? err.message : String(err));
+    }
+    if (r.status !== "success") {
+      const text = `Transaction ${i + 1} ("${tx.description}") reverted on-chain: ${hash}.${sent.length ? ` ${sent.length} earlier transaction(s) are final.` : ""}`;
+      throw sent.length ? new SentError(text) : new Error(text);
+    }
     sent.push({ hash, explorer: `${CHAINS[chain].explorer}/tx/${hash}`, block: Number(r.blockNumber), description: tx.description, contractAddress: r.contractAddress ?? null, gasUsed: r.gasUsed.toString() });
   }
   return sent;
