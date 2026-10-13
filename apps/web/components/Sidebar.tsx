@@ -1,12 +1,12 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, Check, Link2, Loader2, LogIn, LogOut, Menu, Plus, ShieldCheck, UserRound, Wallet } from "lucide-react";
+import { ArrowDownToLine, CalendarClock, Check, Link2, Loader2, LogIn, LogOut, Menu, Plus, ShieldCheck, UserRound, Wallet } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, post, short, usd, type Me, type Permission } from "@/lib/api";
 import { useLinkedWallet } from "@/lib/linkedWallet";
-import { DepositPanel } from "./DepositPanel";
-import { MenuContext, MenuItem } from "./MenuItem";
+import { DepositModal } from "./DepositModal";
+import { MenuButton, MenuContext, MenuItem } from "./MenuItem";
 import type { useSession } from "@/lib/session";
 
 interface Guard { id: string; venue: string; params: Record<string, any>; status: string; lastValue: number | null; lastCheck: string | null }
@@ -14,6 +14,7 @@ interface Guard { id: string; venue: string; params: Record<string, any>; status
 export function Sidebar({ session, onNewChat }: { session: ReturnType<typeof useSession>; onNewChat: () => void }) {
   const { me, signedIn } = session;
   const [collapsed, setCollapsed] = useState(false);
+  const [depositing, setDepositing] = useState(false);
   // The choice stays after a reload. It is read after the first render, so the server and the browser draw the same page.
   useEffect(() => setCollapsed(localStorage.getItem("menu-collapsed") === "1"), []);
   const set = (value: boolean) => {
@@ -93,7 +94,7 @@ export function Sidebar({ session, onNewChat }: { session: ReturnType<typeof use
               </div>
             )}
             <Balances />
-            <DepositPanel me={me} />
+            <MenuButton icon={ArrowDownToLine} label="Deposit" onClick={() => setDepositing(true)} />
             <LinkedWallet me={me} />
             <Paybox />
             <Jobs />
@@ -103,6 +104,7 @@ export function Sidebar({ session, onNewChat }: { session: ReturnType<typeof use
       </div>
 
     </aside>
+    {depositing && me && <DepositModal me={me} onClose={() => setDepositing(false)} />}
     </MenuContext.Provider>
   );
 }

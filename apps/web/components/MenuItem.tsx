@@ -50,3 +50,22 @@ export function MenuItem({ icon: Icon, label, value, badge, defaultOpen = false,
     </section>
   );
 }
+
+/** A row that does something at once, for example opens a window. It has no details under it. */
+export function MenuButton({ icon: Icon, label, onClick }: { icon: LucideIcon; label: string; onClick: () => void }) {
+  const { collapsed } = useContext(MenuContext);
+  if (collapsed)
+    return (
+      <button onClick={onClick} title={label} aria-label={label} className="mx-auto grid size-10 place-items-center rounded-lg text-dim hover:bg-raised hover:text-ink">
+        <Icon className="size-[18px]" />
+      </button>
+    );
+  return (
+    <button onClick={onClick} className="group flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-[14px] hover:bg-raised">
+      <span className="grid size-7 shrink-0 place-items-center rounded-md bg-raised text-dim group-hover:text-ink">
+        <Icon className="size-4" />
+      </span>
+      <span className="min-w-0 flex-1 truncate font-medium">{label}</span>
+    </button>
+  );
+}
