@@ -62,50 +62,106 @@ export async function walletAssets(address: string, minUsd = MIN_ASSET_USD, { in
 
 /** Chains that the LI.FI balance API does not read: Robinhood Chain (stock tokens) and Tempo. */
 export const RPC_READ_CHAINS = [4663, TEMPO_ID] as const;
+/**
+ * Tokens read from the chain RPC, so a deposit shows at once. The LI.FI balance API is cached for 5 minutes (s-maxage=300).
+ * `null` reads every token LI.FI lists on the chain. Other tokens on other chains still come from the LI.FI balance API.
+ */
+const FAST_READ: Record<number, readonly string[] | null> = {
+  4663: null, [TEMPO_ID]: null,
+  ...Object.fromEntries([8453, 42161, 1, 10, 137, 56].map((id) => [id, ["ETH", "POL", "BNB", "USDC", "USDC.e", "USDbC", "USDT", "USDT0", "WETH", "WBTC", "cbBTC", "DAI"]])),
+};
 const MULTICALL3 = "0xcA11bde05977b3631167028862bE2a173976CA11" as const;
 const multicallAbi = [{ type: "function", name: "getEthBalance", stateMutability: "view", inputs: [{ name: "addr", type: "address" }], outputs: [{ type: "uint256" }] }] as const;
 let listCache: Map<number, { at: number; tokens: { address: string; symbol: string; decimals: number; priceUSD?: string; logoURI?: string }[] }> = new Map();
 
+const assetKey = (chainId: number, token: string) => `${chainId}:${token.toLowerCase()}`;
+
+const listLoads = new Map<number, Promise<{ at: number; tokens: { address: string; symbol: string; decimals: number; priceUSD?: string; logoURI?: string }[] }>>();
+function loadTokenList(chainId: number) {
+  const running = listLoads.get(chainId);
+  if (running) return running;
+  const job = getJson<{ tokens: Record<string, { address: string; symbol: string; decimals: number; priceUSD?: string; logoURI?: string }[]> }>(`${LIFI}/tokens?chains=${chainId}`)
+    .then((res) => {
+      const list = { at: Date.now(), tokens: Object.values(res.tokens).flat() };
+      listCache.set(chainId, list);
+      return list;
+    })
+    .finally(() => listLoads.delete(chainId));
+  listLoads.set(chainId, job);
+  return job;
+}
+
 /**
- * Every token of the address on `RPC_READ_CHAINS`, read with Multicall3 from the chain RPC.
- * The token list, the prices and the logos come from LI.FI (`GET /v1/tokens`).
+ * The tokens of `FAST_READ` that the address holds, read with Multicall3 from the chain RPC. A chain whose RPC fails is left out.
+ * The token list, the prices and the logos come from LI.FI (`GET /v1/tokens`). `checked` holds every token that was read,
+ * held or not, so a stale LI.FI balance of a token that was spent is not shown again.
  */
-export async function rpcAssets(address: string, minUsd = MIN_ASSET_USD): Promise<WalletAsset[]> {
+async function fastRead(address: string, chainIds: number[]): Promise<{ assets: WalletAsset[]; checked: Set<string> }> {
   const known = await chains();
-  const perChain = await Promise.all(RPC_READ_CHAINS.map(async (chainId) => {
+  const checked = new Set<string>();
+  const perChain = await Promise.all(chainIds.map(async (chainId) => {
     const chain = known.get(chainId);
     if (!chain) return [];
+    // A stale list is used while a new one loads, so only the first read after a start waits for the list.
     let list = listCache.get(chainId);
-    if (!list || Date.now() - list.at > 600_000) {
-      const res = await getJson<{ tokens: Record<string, { address: string; symbol: string; decimals: number; priceUSD?: string; logoURI?: string }[]> }>(`${LIFI}/tokens?chains=${chainId}`);
-      list = { at: Date.now(), tokens: Object.values(res.tokens).flat() };
-      listCache.set(chainId, list);
-    }
+    if (!list) list = await loadTokenList(chainId);
+    else if (Date.now() - list.at > 600_000) void loadTokenList(chainId).catch(() => {});
+    const symbols = FAST_READ[chainId];
+    const tokens = symbols ? list.tokens.filter((t) => t.address === NATIVE || symbols.includes(t.symbol)) : list.tokens;
     const client = createPublicClient({ transport: http(chain.metamask.rpcUrls[0]) });
     const results = await client.multicall({
       multicallAddress: MULTICALL3, allowFailure: true,
-      contracts: list.tokens.map((t) => t.address === NATIVE
+      contracts: tokens.map((t) => t.address === NATIVE
         ? { address: MULTICALL3, abi: multicallAbi, functionName: "getEthBalance" as const, args: [address as Address] }
         : { address: t.address as Address, abi: erc20Abi, functionName: "balanceOf" as const, args: [address as Address] }),
-    });
-    return list.tokens.flatMap((t, i): WalletAsset[] => {
+    }).catch(() => null);
+    if (!results) return [];
+    return tokens.flatMap((t, i): WalletAsset[] => {
       const r = results[i]!;
-      if (r.status !== "success" || !(r.result as bigint)) return [];
+      if (r.status !== "success") return [];
+      checked.add(assetKey(chainId, t.address));
+      if (!(r.result as bigint)) return [];
       const amount = Number(formatUnits(r.result as bigint, t.decimals));
       const price = Number(t.priceUSD ?? 0) || null;
       const logo = t.logoURI && !t.logoURI.endsWith("unknown.svg") ? t.logoURI : null;
       return [{ chainId, chainName: chain.name, symbol: t.symbol, token: t.address, decimals: t.decimals, amount, usd: price === null ? null : amount * price, native: t.address === NATIVE, logo, chainLogo: chain.logoURI ?? null }];
     });
   }));
-  return perChain.flat().filter((a) => a.usd !== null && a.usd >= minUsd).sort((x, y) => (y.usd ?? 0) - (x.usd ?? 0));
+  return { assets: perChain.flat(), checked };
 }
 
-/** `walletAssets` plus the chains that only an RPC read covers. A source that fails is left out; both failing gives null. */
-export async function allWalletAssets(address: string, minUsd = MIN_ASSET_USD): Promise<WalletAsset[] | null> {
-  const [lifi, rpc] = await Promise.all([walletAssets(address, minUsd, { includeTempo: true }).catch(() => null), rpcAssets(address, minUsd).catch(() => null)]);
+/** Every token of the address on `RPC_READ_CHAINS`, read with Multicall3 from the chain RPC. */
+export async function rpcAssets(address: string, minUsd = MIN_ASSET_USD): Promise<WalletAsset[]> {
+  const { assets } = await fastRead(address, [...RPC_READ_CHAINS]);
+  return assets.filter((a) => a.usd !== null && a.usd >= minUsd).sort((x, y) => (y.usd ?? 0) - (x.usd ?? 0));
+}
+
+/**
+ * Every token of the address: the RPC read of `FAST_READ`, which is current, plus the LI.FI balance API for other tokens.
+ * `includeTempo: false` leaves out Tempo, for a list of tokens to convert. A source that fails is left out; both failing gives null.
+ */
+export async function allWalletAssets(address: string, minUsd = MIN_ASSET_USD, { includeTempo = true } = {}): Promise<WalletAsset[] | null> {
+  const fastChains = Object.keys(FAST_READ).map(Number).filter((id) => includeTempo || id !== TEMPO_ID);
+  const [lifi, rpc] = await Promise.all([walletAssets(address, minUsd, { includeTempo }).catch(() => null), fastRead(address, fastChains).catch(() => null)]);
   if (lifi === null && rpc === null) return null;
-  const seen = new Set((rpc ?? []).map((a) => `${a.chainId}:${a.token.toLowerCase()}`));
-  return [...(rpc ?? []), ...(lifi ?? []).filter((a) => !seen.has(`${a.chainId}:${a.token.toLowerCase()}`))].sort((x, y) => (y.usd ?? 0) - (x.usd ?? 0));
+  const fast = (rpc?.assets ?? []).filter((a) => a.usd !== null && a.usd >= minUsd);
+  const seen = new Set([...(rpc?.checked ?? []), ...fast.map((a) => assetKey(a.chainId, a.token))]);
+  return [...fast, ...(lifi ?? []).filter((a) => !seen.has(assetKey(a.chainId, a.token)))].sort((x, y) => (y.usd ?? 0) - (x.usd ?? 0));
+}
+
+/** LI.FI chain id of Solana, and the address it uses for SOL. */
+export const SOLANA_ID = 1151111081099710;
+export const SOL_NATIVE = "11111111111111111111111111111111";
+
+/**
+ * Convert about `usd` of a Solana token to OUSD on Tempo through LI.FI. `signAndSend` signs the base64 transaction with the
+ * Solana wallet `from` and sends it. The OUSD arrives at `toAddress`.
+ */
+export async function convertSolanaToOusd(signAndSend: (tx: string) => Promise<string>, args: { from: string; mint: string; amount: bigint; toAddress: string }) {
+  const q = new URLSearchParams({ fromChain: String(SOLANA_ID), toChain: String(TEMPO_ID), fromToken: args.mint, toToken: OUSD_TEMPO, fromAmount: args.amount.toString(), fromAddress: args.from, toAddress: args.toAddress, integrator: INTEGRATOR, slippage: "0.01" });
+  const quoteRes = await getJson<{ tool: string; estimate: { toAmount: string; executionDuration?: number }; transactionRequest: { data: string } }>(`${LIFI}/quote?${q}`);
+  const hash = await signAndSend(quoteRes.transactionRequest.data);
+  return { hash, tool: quoteRes.tool, expectedOusd: Number(formatUnits(BigInt(quoteRes.estimate.toAmount), 6)), etaSeconds: quoteRes.estimate.executionDuration ?? null, status: `https://scan.li.fi/tx/${hash}` };
 }
 
 function quote(args: { chainId: number; token: string; amount: bigint; from: string; to: string }) {

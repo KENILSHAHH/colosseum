@@ -6,7 +6,7 @@ import { z } from "zod";
 import { Receipt } from "mppx";
 import {
   config, ensureUser, executeIntent, getDepositWallet, getIntent, getOrCreateWallet, getPositions, isExpired, listDeposits, listIntents,
-  migrate, privyEnabled, sponsorAddress, syncDepositWallet, syncSolanaWallet, getSolanaWallet, walletSender, privySignIn, promptPriceUsd, recordCharge, runChatAgent, sendToRun, ChatRecorder, activeRecorders, listChats, getChat, deleteChat, signToken, sql, startLlmProxy, transition, updateWalletSettings, verifyToken, withdrawToOwner, type AgentEvent,
+  migrate, privyEnabled, sponsorAddress, syncDepositWallet, syncSolanaWallet, getSolanaWallet, walletSender, privySignIn, solanaSignAndSend, promptPriceUsd, recordCharge, runChatAgent, sendToRun, ChatRecorder, activeRecorders, listChats, getChat, deleteChat, signToken, sql, startLlmProxy, transition, updateWalletSettings, verifyToken, withdrawToOwner, type AgentEvent,
 } from "@app/core";
 import { creditHyperliquid, hyperliquid, solanaBalances, buildSolanaDeposit, delegation, jobs, lifi, paybox, SOLANA_DEPOSIT_TOKENS } from "@app/core";
 import { cancelGuard, listGuards } from "@app/core/guards";
@@ -159,9 +159,42 @@ async function* chatEvents(userId: string, body: z.infer<typeof ChatBody>, signa
   }
 }
 
-/** Value moved to OUSD on Tempo when the wallet has none left. It pays for 100 prompts at 0.01 USD. */
+/** Value moved to OUSD on Tempo when a deposit arrives and the wallet holds little OUSD. It pays for 100 prompts at 0.01 USD. */
 const PROMPT_TOP_UP_USD = 1;
+/** Below this OUSD balance the credit loop converts PROMPT_TOP_UP_USD of a deposited token. */
+const PROMPT_CREDIT_LOW_USD = 0.1;
 const toppingUp = new Map<string, Promise<boolean>>();
+/** After a conversion that failed or did not arrive, the loop waits this long before it tries that user again. A wallet with nothing to convert is checked each round. */
+const CREDIT_RETRY_MS = 30 * 60_000;
+/** SOL left in the Solana wallet for the fees of later transactions. */
+const SOL_FEE_RESERVE = 0.01;
+/** How often the credit loop looks for a new deposit. */
+const CREDIT_LOOP_SECONDS = 10;
+const creditTriedAt = new Map<string, number>();
+
+/** For each user with little OUSD, convert 1 USD of a deposited token to OUSD on Tempo. The rest of the deposit stays as it is. */
+async function creditDeposits() {
+  const price = promptPriceUsd();
+  const users = await sql()<{ user_id: string }[]>`select user_id from agent_wallets`;
+  for (const { user_id: userId } of users) {
+    if (toppingUp.has(userId) || Date.now() - (creditTriedAt.get(userId) ?? 0) < CREDIT_RETRY_MS) continue;
+    const { address } = await getOrCreateWallet(userId);
+    const balance = await ousdBalance(address);
+    if (balance === null || balance >= PROMPT_CREDIT_LOW_USD) continue;
+    void topUpPromptCredit(userId, address, Math.max(price, PROMPT_CREDIT_LOW_USD))
+      .then((ok) => { if (ok) creditTriedAt.delete(userId); })
+      .catch((err) => { creditTriedAt.set(userId, Date.now()); console.error(`prompt credit failed for ${userId}:`, err instanceof Error ? err.message.split("\n")[0] : err); });
+  }
+}
+
+let crediting = false;
+function startDepositCredit() {
+  setInterval(() => {
+    if (crediting) return;
+    crediting = true;
+    creditDeposits().catch((err) => console.error("prompt credit loop:", err)).finally(() => (crediting = false));
+  }, CREDIT_LOOP_SECONDS * 1000).unref();
+}
 
 /**
  * Convert about 1 USD of a token of the wallet to OUSD on Tempo, then wait until it arrives.
@@ -170,22 +203,48 @@ const toppingUp = new Map<string, Promise<boolean>>();
 function topUpPromptCredit(userId: string, address: string, price: number): Promise<boolean> {
   const running = toppingUp.get(userId);
   if (running) return running;
+  const arrived = async () => {
+    creditTriedAt.set(userId, Date.now());
+    for (let i = 0; i < 30; i++) {
+      if (((await ousdBalance(address)) ?? 0) >= price) return true;
+      await new Promise((res) => setTimeout(res, 2000));
+    }
+    return false;
+  };
+  const failed = (what: string, err: unknown) => {
+    creditTriedAt.set(userId, Date.now());
+    console.error(`prompt credit: ${what} did not convert for ${userId}:`, err instanceof Error ? err.message.split("\n")[0] : err);
+  };
+  const stable = (s: string) => /^(USDC|USDT|USDT0|DAI|USDC\.e|USDbC)$/i.test(s);
   const job = (async () => {
-    const assets = await lifi.walletAssets(address, PROMPT_TOP_UP_USD * 1.2).catch(() => []);
-    const stable = (s: string) => /^(USDC|USDT|DAI|USDC\.e|USDbC)$/i.test(s);
+    const assets = (await lifi.allWalletAssets(address, PROMPT_TOP_UP_USD * 1.2, { includeTempo: false }).catch(() => null)) ?? [];
     assets.sort((x, y) => Number(stable(y.symbol)) - Number(stable(x.symbol)) || (y.usd ?? 0) - (x.usd ?? 0));
-    const account = await walletSender(userId);
+    const account = assets.length ? await walletSender(userId) : null;
     for (const a of assets) {
       try {
-        const r = await lifi.convertToOusd(account, { chainId: a.chainId, token: a.token, toAddress: address, maxUsd: PROMPT_TOP_UP_USD });
+        const r = await lifi.convertToOusd(account!, { chainId: a.chainId, token: a.token, toAddress: address, maxUsd: PROMPT_TOP_UP_USD });
         console.log(`prompt credit: ${a.symbol} on ${a.chainName} -> about ${r.expectedOusd} OUSD for ${userId} (${r.hash})`);
-        for (let i = 0; i < 30; i++) {
-          if (((await ousdBalance(address)) ?? 0) >= price) return true;
-          await new Promise((res) => setTimeout(res, 2000));
-        }
-        return false;
+        return arrived();
       } catch (err) {
-        console.error(`prompt credit: ${a.symbol} on ${a.chainName} did not convert for ${userId}:`, err instanceof Error ? err.message.split("\n")[0] : err);
+        failed(`${a.symbol} on ${a.chainName}`, err);
+      }
+    }
+    // No EVM token can pay: a deposit on Solana pays. USDC and USDT first, then SOL, which keeps a reserve for the fees.
+    const sw = await getSolanaWallet(userId).catch(() => null);
+    if (!sw?.enabled) return false;
+    const tokens = (await solanaBalances(sw.address).catch(() => null)) ?? [];
+    tokens.sort((x, y) => Number(stable(y.symbol)) - Number(stable(x.symbol)) || (y.usd ?? 0) - (x.usd ?? 0));
+    for (const t of tokens) {
+      const meta = t.symbol === "SOL" ? { mint: lifi.SOL_NATIVE, decimals: 9 } : Object.values(SOLANA_DEPOSIT_TOKENS).find((m) => m?.mint === t.mint);
+      if (!meta || !t.usd || t.usd < PROMPT_TOP_UP_USD * 1.2) continue;
+      if (t.symbol === "SOL" && t.amount - (PROMPT_TOP_UP_USD / t.usd) * t.amount < SOL_FEE_RESERVE) continue;
+      const amount = BigInt(Math.floor((PROMPT_TOP_UP_USD / t.usd) * t.amount * 10 ** meta.decimals));
+      try {
+        const r = await lifi.convertSolanaToOusd((tx) => solanaSignAndSend(sw.walletId, tx), { from: sw.address, mint: meta.mint, amount, toAddress: address });
+        console.log(`prompt credit: ${t.symbol} on Solana -> about ${r.expectedOusd} OUSD for ${userId} (${r.hash})`);
+        return arrived();
+      } catch (err) {
+        failed(`${t.symbol} on Solana`, err);
       }
     }
     return false;
@@ -372,7 +431,8 @@ app.get("/billing/balances", async (c) => {
   const sol = sw ? await solanaBalances(sw.address).catch(() => null) : null;
   return c.json({
     address, usd: assets === null ? null : assets.reduce((s, a) => s + (a.usd ?? 0), 0),
-    solana: sw ? { address: sw.address, usd: sol === null ? null : sol.reduce((s, b) => s + (b.usd ?? 0), 0), canSign: sw.enabled } : null,
+    assets: (assets ?? []).filter((a) => (a.usd ?? 0) >= 0.01).map((a) => ({ chainId: a.chainId, chainName: a.chainName, symbol: a.symbol, amount: a.amount, usd: a.usd, logo: a.logo, chainLogo: a.chainLogo })),
+    solana: sw ? { address: sw.address, usd: sol === null ? null : sol.reduce((s, b) => s + (b.usd ?? 0), 0), canSign: sw.enabled, tokens: (sol ?? []).filter((t) => (t.usd ?? 0) >= 0.01) } : null,
   });
 });
 
@@ -437,5 +497,6 @@ startLlmProxy();
 // The Privy wallet is now the wallet of the user, so the converter that swept it to OUSD stays off.
 const sweeper = false;
 jobs.startJobRunner();
+if (mppEnabled()) startDepositCredit();
 serve({ fetch: app.fetch, port: config().API_PORT });
-console.log(`API on http://localhost:${config().API_PORT}  (MPP ${mppEnabled() ? "on, Tempo mainnet" : "off"}, deposit converter ${sweeper ? "on" : "off"})`);
+console.log(`API on http://localhost:${config().API_PORT}  (MPP ${mppEnabled() ? `on, Tempo mainnet, ${PROMPT_TOP_UP_USD} USD of each deposit to OUSD` : "off"}, deposit converter ${sweeper ? "on" : "off"})`);
