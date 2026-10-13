@@ -9,6 +9,7 @@ export * from "./llmProxy";
 export * from "./billing/pricing";
 export * from "./registry/chains";
 export * from "./agent/run";
+export * from "./chats";
 export * as hyperliquid from "./adapters/hyperliquid";
 export * as aave from "./adapters/aave";
 export * as jupiter from "./adapters/jupiter";

@@ -10,7 +10,7 @@ import { PermissionCard } from "@/components/PermissionCard";
 import { WalletRequestCard } from "@/components/WalletRequestCard";
 import { PositionsView } from "@/components/Positions";
 import { Sidebar } from "@/components/Sidebar";
-import { chat, post, usd, type Intent, type Permission, type WalletRequest } from "@/lib/api";
+import { api, chat, post, usd, type Intent, type Permission, type WalletRequest } from "@/lib/api";
 import { useSession } from "@/lib/session";
 
 type Part =
@@ -108,6 +108,7 @@ export default function Page() {
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<"chat" | "positions">("chat");
   const sessionId = useRef<string | null>(null);
+  const [chatId, setChatId] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const [hintIndex, setHintIndex] = useState(0);
@@ -188,6 +189,7 @@ export default function Page() {
         if ((e as Error).name !== "AbortError") patchLast((m) => ({ ...m, error: e instanceof Error ? e.message : "The request failed" }));
       } finally {
         setBusy(false);
+        qc.invalidateQueries({ queryKey: ["chats"] });
       }
     },
     [busy, session.signedIn, patchLast, qc],
@@ -241,7 +243,21 @@ export default function Page() {
   const newChat = () => {
     abort.current?.abort();
     sessionId.current = null;
+    setChatId(null);
     setMessages([]);
+  };
+
+  const openChat = async (id: string) => {
+    abort.current?.abort();
+    try {
+      const stored = await api<{ id: string; sessionId: string | null; messages: Message[] }>(`/chats/${id}`);
+      sessionId.current = stored.sessionId;
+      setChatId(stored.id);
+      setMessages(stored.messages.map((m) => ({ role: m.role, parts: m.parts, ...(m.cost ? { cost: m.cost } : {}), ...(m.error ? { error: m.error } : {}) })));
+      setTab("chat");
+    } catch (e) {
+      setVoiceError(e instanceof Error ? e.message : "The chat did not open");
+    }
   };
 
   const empty = messages.length === 0;
@@ -304,7 +320,7 @@ export default function Page() {
 
   return (
     <div className="flex h-dvh">
-      <Sidebar session={session} onNewChat={newChat} />
+      <Sidebar session={session} onNewChat={newChat} onOpenChat={openChat} activeChatId={chatId} />
 
       <main className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-center gap-1 border-b border-line px-6 py-2">

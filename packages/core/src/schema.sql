@@ -224,3 +224,25 @@ create table if not exists paybox_tokens (
   refresh_token text,
   expires_at    timestamptz not null
 );
+
+-- Chats of each user. One row per conversation, one row per message. A message holds its parts as JSON.
+create table if not exists chats (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    text not null references users(id),
+  session_id text,
+  title      text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists chats_user on chats(user_id, updated_at desc);
+create index if not exists chats_session on chats(user_id, session_id);
+create table if not exists chat_messages (
+  id         bigserial primary key,
+  chat_id    uuid not null references chats(id) on delete cascade,
+  role       text not null,
+  parts      jsonb not null default '[]',
+  cost       jsonb,
+  error      text,
+  created_at timestamptz not null default now()
+);
+create index if not exists chat_messages_chat on chat_messages(chat_id, id);

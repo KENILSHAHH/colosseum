@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownToLine, CalendarClock, Check, Link2, Loader2, LogIn, LogOut, Menu, Plus, ShieldCheck, UserRound, Wallet } from "lucide-react";
+import { ArrowDownToLine, CalendarClock, History, Trash2, Check, Link2, Loader2, LogIn, LogOut, Menu, Plus, ShieldCheck, UserRound, Wallet } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, post, short, usd, type Me, type Permission } from "@/lib/api";
 import { useLinkedWallet } from "@/lib/linkedWallet";
@@ -11,7 +11,7 @@ import type { useSession } from "@/lib/session";
 
 interface Guard { id: string; venue: string; params: Record<string, any>; status: string; lastValue: number | null; lastCheck: string | null }
 
-export function Sidebar({ session, onNewChat }: { session: ReturnType<typeof useSession>; onNewChat: () => void }) {
+export function Sidebar({ session, onNewChat, onOpenChat, activeChatId }: { session: ReturnType<typeof useSession>; onNewChat: () => void; onOpenChat: (id: string) => void; activeChatId: string | null }) {
   const { me, signedIn } = session;
   const [collapsed, setCollapsed] = useState(false);
   const [depositing, setDepositing] = useState(false);
@@ -97,6 +97,7 @@ export function Sidebar({ session, onNewChat }: { session: ReturnType<typeof use
             <MenuButton icon={ArrowDownToLine} label="Deposit" onClick={() => setDepositing(true)} />
             <LinkedWallet me={me} />
             <Paybox />
+            <PastChats onOpen={onOpenChat} activeId={activeChatId} />
             <Jobs />
             <Guards />
           </>
@@ -291,6 +292,52 @@ function Guards() {
           </button>
         </div>
       ))}
+    </MenuItem>
+  );
+}
+
+interface ChatSummary { id: string; title: string; updatedAt: string }
+
+const day = (iso: string) => {
+  const d = new Date(iso);
+  const days = Math.floor((Date.now() - d.getTime()) / 86_400_000);
+  return days < 1 && d.getDate() === new Date().getDate() ? "Today" : days < 2 ? "Yesterday" : days < 7 ? "Last 7 days" : "Older";
+};
+
+/** The chats of the user, newest first, in groups by day. A click opens one. */
+function PastChats({ onOpen, activeId }: { onOpen: (id: string) => void; activeId: string | null }) {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["chats"], queryFn: () => api<ChatSummary[]>("/chats"), refetchInterval: 30_000 });
+  const groups = new Map<string, ChatSummary[]>();
+  for (const c of data ?? []) groups.set(day(c.updatedAt), [...(groups.get(day(c.updatedAt)) ?? []), c]);
+  return (
+    <MenuItem icon={History} label="Previous chats" badge={data?.length}>
+      {!data ? (
+        <p className="text-[12px] text-faint">…</p>
+      ) : data.length === 0 ? (
+        <p className="text-[12px] leading-snug text-faint">No chats yet. Your chats show here.</p>
+      ) : (
+        [...groups].map(([title, chats]) => (
+          <div key={title} className="mb-2">
+            <p className="mb-1 px-1 text-[11px] font-medium uppercase tracking-wider text-faint">{title}</p>
+            {chats.map((c) => (
+              <div key={c.id} className={`group/chat flex items-center rounded-md hover:bg-raised ${c.id === activeId ? "bg-raised" : ""}`}>
+                <button onClick={() => onOpen(c.id)} title={c.title} className="min-w-0 flex-1 truncate px-2 py-1.5 text-left text-[12.5px]">
+                  {c.title}
+                </button>
+                <button
+                  onClick={async () => { await api(`/chats/${c.id}`, { method: "DELETE" }); qc.invalidateQueries({ queryKey: ["chats"] }); }}
+                  title="Delete this chat"
+                  aria-label="Delete this chat"
+                  className="mr-1 hidden shrink-0 rounded p-1 text-faint hover:text-bad group-hover/chat:block"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        ))
+      )}
     </MenuItem>
   );
 }

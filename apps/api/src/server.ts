@@ -6,7 +6,7 @@ import { z } from "zod";
 import { Receipt } from "mppx";
 import {
   config, ensureUser, executeIntent, getDepositWallet, getIntent, getOrCreateWallet, getPositions, isExpired, listDeposits, listIntents,
-  migrate, privyEnabled, sponsorAddress, syncDepositWallet, syncSolanaWallet, getSolanaWallet, walletSender, privySignIn, promptPriceUsd, recordCharge, runChatAgent, sendToRun, signToken, sql, startLlmProxy, transition, updateWalletSettings, verifyToken, withdrawToOwner, type AgentEvent,
+  migrate, privyEnabled, sponsorAddress, syncDepositWallet, syncSolanaWallet, getSolanaWallet, walletSender, privySignIn, promptPriceUsd, recordCharge, runChatAgent, sendToRun, ChatRecorder, activeRecorders, listChats, getChat, deleteChat, signToken, sql, startLlmProxy, transition, updateWalletSettings, verifyToken, withdrawToOwner, type AgentEvent,
 } from "@app/core";
 import { solanaBalances, buildSolanaDeposit, delegation, jobs, lifi, paybox, SOLANA_DEPOSIT_TOKENS } from "@app/core";
 import { cancelGuard, listGuards } from "@app/core/guards";
@@ -56,7 +56,7 @@ const auth = async (c: Context<Env>, next: () => Promise<void>) => {
   c.set("userId", claims.sub);
   await next();
 };
-for (const p of ["/me", "/wallet", "/wallet/*", "/positions", "/chat", "/chat/*", "/intents", "/intents/*", "/guards", "/guards/*", "/billing", "/billing/*", "/permissions", "/permissions/*", "/deposit", "/deposit/*", "/jobs", "/jobs/*", "/paybox", "/paybox/status", "/paybox/start"]) app.use(p, auth);
+for (const p of ["/me", "/wallet", "/wallet/*", "/positions", "/chat", "/chat/*", "/chats", "/chats/*", "/intents", "/intents/*", "/guards", "/guards/*", "/billing", "/billing/*", "/permissions", "/permissions/*", "/deposit", "/deposit/*", "/jobs", "/jobs/*", "/paybox", "/paybox/status", "/paybox/start"]) app.use(p, auth);
 
 // ── Account and agent wallet ───────────────────────────────────────────────
 app.get("/me", async (c) => {
@@ -117,7 +117,20 @@ app.get("/positions", async (c) => {
 const ChatBody = z.object({ prompt: z.string().min(1).max(20_000), sessionId: z.string().optional() });
 
 async function* chatEvents(userId: string, body: z.infer<typeof ChatBody>, signal: AbortSignal): AsyncGenerator<AgentEvent> {
-  yield* runChatAgent({ userId, prompt: body.prompt, resume: body.sessionId, signal });
+  // The run is stored while it streams. A storage error never stops the chat.
+  const rec = await ChatRecorder.open(userId, body.prompt, body.sessionId).catch((err) => (console.error("chat store:", err), null));
+  if (rec) activeRecorders.set(userId, rec);
+  try {
+    for await (const ev of runChatAgent({ userId, prompt: body.prompt, resume: body.sessionId, signal })) {
+      await rec?.add(ev).catch((err) => console.error("chat store:", err));
+      yield ev;
+    }
+  } finally {
+    if (rec) {
+      await rec.flush().catch((err) => console.error("chat store:", err));
+      if (activeRecorders.get(userId) === rec) activeRecorders.delete(userId);
+    }
+  }
 }
 
 /** Value moved to OUSD on Tempo when the wallet has none left. It pays for 100 prompts at 0.01 USD. */
@@ -178,8 +191,26 @@ function chatStream(userId: string, body: z.infer<typeof ChatBody>, signal: Abor
 // A message for the run that is active now. The agent reads it before its next step. It adds no price: the run is one prompt.
 app.post("/chat/message", async (c) => {
   const { prompt } = z.object({ prompt: z.string().min(1).max(20_000) }).parse(await c.req.json());
-  return sendToRun(c.get("userId"), prompt) ? c.json({ queued: true }, 202) : c.json({ error: "No run is active." }, 409);
+  const userId = c.get("userId");
+  if (!sendToRun(userId, prompt)) return c.json({ error: "No run is active." }, 409);
+  await activeRecorders.get(userId)?.midRunMessage(prompt).catch((err) => console.error("chat store:", err));
+  return c.json({ queued: true }, 202);
 });
+
+// ── Past chats ─────────────────────────────────────────────────────────────
+app.get("/chats", async (c) => c.json(await listChats(c.get("userId"))));
+
+app.get("/chats/:id", async (c) => {
+  const userId = c.get("userId");
+  const chat = await getChat(userId, c.req.param("id"));
+  if (!chat) return c.json({ error: "Unknown chat." }, 404);
+  // A card that was pending when the chat was stored can have changed since. Show its state now.
+  for (const m of chat.messages)
+    m.parts = await Promise.all(m.parts.map(async (p) => (p.kind === "intent" ? { kind: "intent", intent: (await getIntent(p.intent.id, userId)) ?? p.intent } : p)));
+  return c.json(chat);
+});
+
+app.delete("/chats/:id", async (c) => c.json({ deleted: await deleteChat(c.get("userId"), c.req.param("id")) }));
 
 app.post("/chat", async (c) => {
   const userId = c.get("userId");
