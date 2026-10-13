@@ -442,6 +442,22 @@ export function buildTools(ctx: ToolContext) {
         }, a.usdValue);
       })),
 
+    tool("stock_tokens", "Find Robinhood stock tokens (tokenized US stocks and ETFs such as TSLA, NVDA, AAPL, SPY) on Robinhood Chain from the official Robinhood list, with the live bid and ask in USD. Each one is an ERC-20 with 18 decimals. To buy or sell one, call swap on robinhood with the exact contract address from this result, never a symbol alone. Stock tokens are not for people in the US, Canada, the UK, Switzerland and some other countries.",
+      { query: z.string().optional().describe("Symbol or name, for example TSLA or Tesla. Empty lists all.") },
+      run(async ({ query }) => {
+        const res = await fetch("https://api.robinhood.com/rhj/assets", { signal: AbortSignal.timeout(15000) });
+        if (!res.ok) throw new Error(`Robinhood asset list: HTTP ${res.status}`);
+        const q = query?.trim().toLowerCase();
+        const assets = ((await res.json()) as { assets: any[] }).assets
+          .filter((x) => !q || x.tokenSymbol?.toLowerCase() === q || x.tokenName?.toLowerCase().includes(q))
+          .map((x) => ({ symbol: x.tokenSymbol, name: x.tokenName, address: x.deployments?.find((d: any) => d.chainId === 4663)?.contractAddress, status: x.status, multiplier: x.currentMultiplier, decimals: x.tokenDecimals }))
+          .filter((x) => x.address);
+        const top = assets.slice(0, 25);
+        const prices = await Promise.all(top.map((x) => fetch(`https://api.robinhood.com/rhj/prices/${x.symbol}`, { signal: AbortSignal.timeout(10000) })
+          .then((r) => (r.ok ? r.json() : null)).then((p: any) => p?.quotes?.[0]).catch(() => null)));
+        return { count: assets.length, tokens: top.map((x, i) => ({ ...x, bid: prices[i]?.bid, ask: prices[i]?.ask, halted: prices[i]?.isTradingHalt })) };
+      }), read),
+
     tool("swap", "Swap any token for any other token on one chain, or move it across chains, from the wallet through LI.FI (jumper.xyz routes: DEX aggregators and bridges). Any token LI.FI knows: give a symbol (USDC, XAUt0, PAXG, WBTC) or an address, or native. On Ethereum, Arbitrum, Base and Robinhood Chain the gas sponsor pays the gas. Quotes live and simulates first.",
       { fromChain: z.enum(EVM_CHAINS), toChain: z.enum(EVM_CHAINS), fromToken: z.string(), toToken: z.string(), amount: z.string().regex(/^\d+(\.\d+)?$/).describe("Whole units of fromToken"), slippagePct: z.number().min(0.05).max(5).optional() },
       run(async (a) => {
