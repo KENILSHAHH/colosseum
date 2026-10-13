@@ -63,6 +63,21 @@ The **Positions** tab shows your total value, your open positions and every toke
 - There is no subscription and no daily cap.
 - Actions cost only the venue's own fees.
 
+### On-chain examples
+
+Real mainnet transactions that the agent sent from a user wallet in the app. On EVM chains the gas sponsor paid the gas, and the approval and the action landed in one transaction.
+
+| Protocol | What the agent did | Transaction |
+|---|---|---|
+| **Hyperliquid** | Open a 25x gold long on the HIP-3 market `xyz:GOLD` | [0x6bfd…3ece](https://app.hyperliquid.xyz/explorer/tx/0x6bfdfac0386f64e36d7704466a74ed0201ed00a5d36283b50fc6a612f7633ece) |
+| **Aave v3** | Supply 1 USDC on Base | [0x6b95…10c2](https://basescan.org/tx/0x6b9525a9d6a26cb71fdbd7d1bc90b522e82c8a0763b7064b51c4848c383a10c2) |
+| **Fluid** | Lend 1 USDC on Base | [0x5c15…3a3c](https://basescan.org/tx/0x5c152757f7b66ef5b8d1be18f64cb1c23dcb22ff381dcddf8daed17071e54a3c) |
+| **Jupiter Lend** | Open a SOL/USDC loan on Solana: 0.96 SOL collateral, borrow 50 USDC | [24BV…QmzF](https://solscan.io/tx/24BVJxhARcnswWsxgPgNFuzhZwZs8sUaaWbtemsXSZsja8eyXeJZh61czoCFNi2NLR6uxxGcbB1h22EGfrD9QmzF) |
+| **Robinhood Chain** | Buy TSLA stock tokens with 5.08 USDG | [0x89d7…cfb2](https://robinhoodchain.blockscout.com/tx/0x89d7da9fd83eb39b4d92924a3e1a209f93bed70c8e584e905efbecfe4102cfb2) |
+| **LI.FI** | Buy TSLA on Robinhood Chain with 2 USDC on Base, in one step | [0x07c2…3272](https://basescan.org/tx/0x07c2fd582b29f76f8f5444811a452f5b00aadec1ef9396433158e7f6be583272) |
+| **Relay** | Bridge 49.34 USDC from Arbitrum to Base | [0x8798…810f](https://arbiscan.io/tx/0x87982bda372ca7138382a63b507505045289cabafa7d2a6eedcc2f5e5f58810f) |
+| **MPP on Tempo** | Pay 0.01 USD in OUSD for one prompt | [0x0fa8…5740](https://explore.tempo.xyz/tx/0x0fa825165f580f2e45e5f8e17aa5409929c370d77b748c4ac506d34c83685740) |
+
 ---
 
 ## Safety
