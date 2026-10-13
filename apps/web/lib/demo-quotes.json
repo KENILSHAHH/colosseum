@@ -1,20 +1,20 @@
 {
-  "fetchedAt": "2026-10-13T05:49:15.858Z",
+  "fetchedAt": "2026-10-13T06:11:06.366Z",
   "coins": {
     "BTC": {
-      "price": 83599.5,
+      "price": 83592.5,
       "maxLeverage": 40
     },
     "ETH": {
-      "price": 2526.55,
+      "price": 2528.15,
       "maxLeverage": 25
     },
     "SOL": {
-      "price": 108.145,
+      "price": 108.265,
       "maxLeverage": 20
     },
     "HYPE": {
-      "price": 82.8475,
+      "price": 82.7875,
       "maxLeverage": 10
     }
   },
@@ -46,10 +46,10 @@
       "apy": 1.33
     },
     "USDC": {
-      "apy": 4.14
+      "apy": 3.94
     },
     "USDT": {
-      "apy": 3.47
+      "apy": 3.46
     },
     "DAI": {
       "apy": 3.44
@@ -68,16 +68,48 @@
     "portugal": 0.07,
     "usa": 0.03,
     "italy": 0.05,
-    "netherlands": 0.05
+    "netherlands": 0.05,
+    "japan": 0.03,
+    "mexico": 0.02,
+    "croatia": 0.02,
+    "morocco": 0.03,
+    "colombia": 0.03,
+    "uruguay": 0.03,
+    "belgium": 0.03,
+    "canada": 0.02,
+    "korea": 0.02,
+    "australia": 0.02
   },
   "updown": {
-    "5": {
-      "up": 0.51,
-      "down": 0.5
+    "btc": {
+      "5": {
+        "up": 0.51,
+        "down": 0.5
+      },
+      "15": {
+        "up": 0.14,
+        "down": 0.87
+      }
     },
-    "15": {
-      "up": 0.48,
-      "down": 0.53
+    "eth": {
+      "5": {
+        "up": 0.5,
+        "down": 0.51
+      },
+      "15": {
+        "up": 0.18,
+        "down": 0.83
+      }
+    },
+    "sol": {
+      "5": {
+        "up": 0.51,
+        "down": 0.5
+      },
+      "15": {
+        "up": 0.07,
+        "down": 0.95
+      }
     }
   },
   "jupiterLend": {

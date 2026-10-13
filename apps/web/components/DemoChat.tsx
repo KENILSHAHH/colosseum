@@ -58,6 +58,16 @@ const COUNTRIES: Record<string, { name: string; code: string }> = {
   usa: { name: "USA", code: "us" },
   italy: { name: "Italy", code: "it" },
   netherlands: { name: "Netherlands", code: "nl" },
+  japan: { name: "Japan", code: "jp" },
+  mexico: { name: "Mexico", code: "mx" },
+  croatia: { name: "Croatia", code: "hr" },
+  morocco: { name: "Morocco", code: "ma" },
+  colombia: { name: "Colombia", code: "co" },
+  uruguay: { name: "Uruguay", code: "uy" },
+  belgium: { name: "Belgium", code: "be" },
+  canada: { name: "Canada", code: "ca" },
+  korea: { name: "South Korea", code: "kr" },
+  australia: { name: "Australia", code: "au" },
 };
 
 const money = (v: number, d = 2) => `$${v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d })}`;
@@ -75,22 +85,26 @@ function toCard(raw: string): DemoCard | null {
   const text = raw.toLowerCase();
   const number = (re: RegExp) => { const m = text.match(re); return m ? Number(m[1]) : null; };
 
-  // "Bitcoin Up or Down" on World, for a window of 5 or 15 minutes. The window is the one that runs now.
-  const minutes = number(/(\d+)\s*(?:min|minutes?)\b/);
-  const market = minutes ? (quotes.updown as Record<string, { up: number; down: number }>)[String(minutes)] : undefined;
-  if (market && minutes && has(text, /\b(btc|bitcoin)\b/) && has(text, /\b(up|down)\b/)) {
+  // "Up or Down" on World for BTC, ETH or SOL, for a window of 5 or 15 minutes. The window is the one that runs now.
+  const asset = text.match(/\b(btc|bitcoin|eth|ethereum|sol|solana)\b/)?.[1];
+  if (asset && has(text, /\b(up|down)\b/)) {
+    const symbol = asset.startsWith("b") ? "BTC" : asset.startsWith("e") ? "ETH" : "SOL";
+    const asked = number(/(\d+)\s*-?\s*(?:m|mins?|minutes?)\b/);
+    const minutes = asked === 15 ? 15 : 5;
+    const market = (quotes.updown as Record<string, Record<string, { up: number; down: number }>>)[symbol.toLowerCase()]?.[String(minutes)];
+    if (!market) return null;
     const side = has(text, /\bdown\b/) && !has(text, /\bup\b/) ? "Down" : "Up";
     const price = side === "Up" ? market.up : market.down;
-    const shares = number(/(\d+(?:\.\d+)?)\s*shares?\b/) ?? 1;
+    const shares = number(/(\d+(?:\.\d+)?)\s*(?:shares?|x)\b/) ?? 1;
     const start = Math.floor(Date.now() / (minutes * 60_000)) * minutes * 60_000;
     const clock = (t: number) => new Date(t).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" }).replace(" AM", "").replace(" PM", "");
     const zone = new Date(start).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric" }).slice(-2);
     return {
-      logos: [TOKENS.BTC!],
+      logos: [TOKENS[symbol]!],
       venue: VENUES.world,
-      title: `Bought ${side.toUpperCase()} · BTC`,
+      title: `Bought ${side.toUpperCase()} · ${symbol}`,
       note: `${minutes} min · ${clock(start)}–${clock(start + minutes * 60_000)} ${zone} ET`,
-      steps: ["Reading the World market", `Getting the BTC ${side} price`, `Buying ${amount(shares)} ${side.toUpperCase()} ${shares === 1 ? "share" : "shares"}`, "Order filled"],
+      steps: ["Reading the World market", `Getting the ${symbol} ${side} price`, `Buying ${amount(shares)} ${side.toUpperCase()} ${shares === 1 ? "share" : "shares"}`, "Order filled"],
       facts: [["Price", `${Math.round(price * 100)}¢`], ["Shares", amount(shares)], ["Cost", money(shares * price)]],
     };
   }

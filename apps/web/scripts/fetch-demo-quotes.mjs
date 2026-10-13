@@ -7,7 +7,7 @@ const STOCKS = ["TSLA", "AAPL", "NVDA", "GOOGL", "META", "NFLX", "COIN"];
 // Aave v3 Ethereum market. The Aave API calls Ether "WETH".
 const LEND = { ETH: "WETH", USDC: "USDC", USDT: "USDT", DAI: "DAI", BTC: "WBTC" };
 // No public market exists for the 2030 World Cup. Set these by hand from the World app.
-const PREDICTIONS = { spain: 0.17, france: 0.15, brazil: 0.09, argentina: 0.12, germany: 0.08, england: 0.13, portugal: 0.07, usa: 0.03, italy: 0.05, netherlands: 0.05 };
+const PREDICTIONS = { spain: 0.17, france: 0.15, brazil: 0.09, argentina: 0.12, germany: 0.08, england: 0.13, portugal: 0.07, usa: 0.03, italy: 0.05, netherlands: 0.05, japan: 0.03, mexico: 0.02, croatia: 0.02, morocco: 0.03, colombia: 0.03, uruguay: 0.03, belgium: 0.03, canada: 0.02, korea: 0.02, australia: 0.02 };
 
 const json = async (url, init) => {
   const res = await fetch(url, { ...init, headers: { "user-agent": "Mozilla/5.0", "content-type": "application/json", ...init?.headers } });
@@ -39,15 +39,22 @@ const lending = Object.fromEntries(
   Object.entries(LEND).map(([symbol, aaveSymbol]) => [symbol, { apy: Number(market.reserves.find((r) => r.underlyingToken.symbol === aaveSymbol).supplyInfo.apy.formatted) }]),
 );
 
-// The "Bitcoin Up or Down" markets of the current 5 and 15 minute windows. The price to buy Up is the best ask. The price to buy Down is one minus the best bid of Up.
+// The "Up or Down" markets of BTC, ETH and SOL for the current 5 and 15 minute windows. The price to buy Up is the best ask. The price to buy Down is one minus the best bid of Up.
 const updown = Object.fromEntries(
   await Promise.all(
-    [5, 15].map(async (minutes) => {
-      const start = Math.floor(Date.now() / 1000 / (minutes * 60)) * minutes * 60;
-      const [event] = await json(`https://gamma-api.polymarket.com/events?slug=btc-updown-${minutes}m-${start}`);
-      const m = event.markets[0];
-      return [String(minutes), { up: Number(m.bestAsk), down: Number((1 - Number(m.bestBid)).toFixed(3)) }];
-    }),
+    ["btc", "eth", "sol"].map(async (asset) => [
+      asset,
+      Object.fromEntries(
+        await Promise.all(
+          [5, 15].map(async (minutes) => {
+            const start = Math.floor(Date.now() / 1000 / (minutes * 60)) * minutes * 60;
+            const [event] = await json(`https://gamma-api.polymarket.com/events?slug=${asset}-updown-${minutes}m-${start}`);
+            const m = event.markets[0];
+            return [String(minutes), { up: Number(m.bestAsk), down: Number((1 - Number(m.bestBid)).toFixed(3)) }];
+          }),
+        ),
+      ),
+    ]),
   ),
 );
 
