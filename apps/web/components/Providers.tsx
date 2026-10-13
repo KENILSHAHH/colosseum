@@ -5,6 +5,7 @@ import { toSolanaWalletConnectors } from "@privy-io/react-auth/solana";
 import { createSolanaRpc, createSolanaRpcSubscriptions } from "@solana/kit";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
+import { arbitrum, base, bsc, hyperEvm, mainnet, optimism, polygon, robinhood, tempo } from "viem/chains";
 
 const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? "";
 const SOLANA_RPC = "https://api.mainnet-beta.solana.com";
@@ -26,6 +27,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
       config={{
         // The Privy dashboard sets the login methods. Each user gets one embedded wallet at the first login.
         appearance: { theme: "dark", accentColor: "#9945FF" },
+        // A connected wallet can switch only to these chains (deposits, permissions and signing requests).
+        defaultChain: base,
+        supportedChains: [base, arbitrum, mainnet, robinhood, tempo, polygon, optimism, bsc, hyperEvm],
         embeddedWallets: { ethereum: { createOnLogin: "all-users" }, solana: { createOnLogin: "all-users" } },
         // Solana wallets such as Phantom can connect, so a user can deposit from them.
         externalWallets: { solana: { connectors: toSolanaWalletConnectors() } },

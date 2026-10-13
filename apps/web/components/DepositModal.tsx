@@ -9,27 +9,49 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { post, short, type Me } from "@/lib/api";
 
-/** `id` 0 is Solana. It has its own wallet and its own assets, and it is used only for Solana actions. */
+/** `id` 0 is Solana: its own wallet and its own assets, used only for Solana actions. `id` -1 is Hyperliquid: USDC goes to the Hyperliquid account. */
 const SOLANA = 0;
+const HYPERLIQUID = -1;
 const CHAINS = [
-  { id: 8453, name: "Base", native: "ETH", logo: "/icons/chain-base.png" },
-  { id: 42161, name: "Arbitrum", native: "ETH", logo: "/icons/chain-arbitrum.png" },
-  { id: 1, name: "Ethereum", native: "ETH", logo: "/icons/chain-ethereum.png" },
-  { id: SOLANA, name: "Solana", native: "SOL", logo: "/icons/chain-solana.svg" },
+  { id: 8453, name: "Base", logo: "/icons/chain-base.png" },
+  { id: 42161, name: "Arbitrum", logo: "/icons/chain-arbitrum.png" },
+  { id: 1, name: "Ethereum", logo: "/icons/chain-ethereum.png" },
+  { id: 4663, name: "Robinhood", logo: "/icons/chain-robinhood.svg" },
+  { id: 4217, name: "Tempo", logo: "/icons/chain-tempo.svg" },
+  { id: HYPERLIQUID, name: "Hyperliquid", logo: "/icons/chain-hyperliquid.svg" },
+  { id: SOLANA, name: "Solana", logo: "/icons/chain-solana.svg" },
 ];
-const SOLANA_TOKENS = [
+type Token = { symbol: string; label: string; logo: string };
+const SOLANA_TOKENS: Token[] = [
   { symbol: "SOL", label: "SOL", logo: "/icons/chain-solana.svg" },
   { symbol: "USDC", label: "USDC", logo: "/icons/usdc.png" },
   { symbol: "USDT", label: "USDT", logo: "/icons/usdt.png" },
-] as const;
-const TOKENS = [
+];
+const TOKENS: Token[] = [
   { symbol: "USDC", label: "USDC", logo: "/icons/usdc.png" },
   { symbol: "USDT", label: "USDT", logo: "/icons/usdt.png" },
   { symbol: "native", label: "ETH", logo: "/icons/eth.png" },
   { symbol: "WBTC", label: "WBTC", logo: "/icons/btc.png" },
   { symbol: "DAI", label: "DAI", logo: "/icons/dai.png" },
   { symbol: "WETH", label: "WETH", logo: "/icons/eth.png" },
-] as const;
+];
+/** The tokens of each network. Robinhood Chain has no USDC; Tempo has no native coin and pays fees in stablecoins. */
+const TOKENS_BY_CHAIN: Record<number, Token[]> = {
+  [SOLANA]: SOLANA_TOKENS,
+  [HYPERLIQUID]: [{ symbol: "USDC", label: "USDC", logo: "/icons/usdc.png" }],
+  4663: [
+    { symbol: "native", label: "ETH", logo: "/icons/eth.png" },
+    { symbol: "USDG", label: "USDG", logo: "/icons/usdg.png" },
+    { symbol: "USDe", label: "USDe", logo: "/icons/usde.png" },
+    { symbol: "WETH", label: "WETH", logo: "/icons/eth.png" },
+  ],
+  4217: [
+    { symbol: "USDCe", label: "USDC.e", logo: "/icons/usdc.png" },
+    { symbol: "USDT0", label: "USDT0", logo: "/icons/usdt.png" },
+    { symbol: "PathUSD", label: "pathUSD", logo: "/icons/chain-tempo.svg" },
+    { symbol: "OUSD", label: "OUSD", logo: "/icons/chain-tempo.svg" },
+  ],
+};
 
 interface Plan { transaction: { to: string; data: string; value: string } }
 
@@ -55,12 +77,13 @@ export function DepositModal({ me, onClose }: { me: Me; onClose: () => void }) {
   const wallet = wallets.find((w) => w.walletClientType !== "privy" && w.walletClientType !== "privy-v2");
   const chain = CHAINS.find((c) => c.id === chainId) ?? CHAINS[0]!;
   const isSolana = chain.id === SOLANA;
-  const tokens: readonly { symbol: string; label: string; logo: string }[] = isSolana ? SOLANA_TOKENS : TOKENS;
+  const isHl = chain.id === HYPERLIQUID;
+  const tokens = TOKENS_BY_CHAIN[chain.id] ?? TOKENS;
   const token = tokens.find((t) => t.symbol === symbol) ?? tokens[0]!;
   const solAddress = me.solana?.address ?? null;
   // A Solana wallet of the user other than the Privy one, for example Phantom.
   const solWallet = solWallets.find((w) => w.address !== solAddress);
-  const agent = isSolana ? (solAddress ?? "") : me.wallet.address;
+  const agent = isSolana ? (solAddress ?? "") : isHl ? me.wallet.hlAddress : me.wallet.address;
 
   useEffect(() => {
     if (!agent) return setQr(null);
@@ -98,9 +121,10 @@ export function DepositModal({ me, onClose }: { me: Me; onClose: () => void }) {
     setNote(null);
     try {
       setStep("Prepare");
-      const plan = await post<Plan>("/deposit/transfer", { chainId: chain.id, symbol, amount });
-      setStep(`Switch to ${chain.name}`);
-      await wallet.switchChain(chain.id);
+      const plan = isHl ? await post<Plan>("/deposit/hyperliquid", { amount }) : await post<Plan>("/deposit/transfer", { chainId: chain.id, symbol: token.symbol, amount });
+      const evmChain = isHl ? CHAINS[1]! : chain;
+      setStep(`Switch to ${evmChain.name}`);
+      await wallet.switchChain(evmChain.id);
       const provider = await wallet.getEthereumProvider();
       const confirmed = async (hash: string) => {
         for (let i = 0; i < 60; i++) {
@@ -114,7 +138,11 @@ export function DepositModal({ me, onClose }: { me: Me; onClose: () => void }) {
       const hash = await provider.request({ method: "eth_sendTransaction", params: [{ from: wallet.address, ...plan.transaction }] });
       setStep("Wait for the deposit");
       if (!(await confirmed(hash as string))) throw new Error("The deposit failed.");
-      setNote({ ok: true, text: "Done. The funds are in your wallet." });
+      if (isHl) {
+        setStep("Bridge into Hyperliquid");
+        await post("/deposit/hyperliquid/credit", {});
+      }
+      setNote({ ok: true, text: isHl ? "Sent. The USDC shows on Hyperliquid in about a minute." : "Done. The funds are in your wallet." });
       setAmount("");
       setTimeout(() => { for (const k of ["balances", "positions"]) qc.invalidateQueries({ queryKey: [k] }); }, 4_000);
     } catch (e) {
@@ -137,7 +165,7 @@ export function DepositModal({ me, onClose }: { me: Me; onClose: () => void }) {
         <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-faint">Network</p>
         <div className="flex flex-wrap gap-2">
           {CHAINS.map((c) => (
-            <button key={c.id} onClick={() => { setChainId(c.id); setSymbol(c.id === SOLANA ? "SOL" : "USDC"); setNote(null); }} aria-pressed={c.id === chain.id} className={chip(c.id === chain.id)}>
+            <button key={c.id} onClick={() => { setChainId(c.id); setSymbol((TOKENS_BY_CHAIN[c.id] ?? TOKENS)[0]!.symbol); setNote(null); }} aria-pressed={c.id === chain.id} className={chip(c.id === chain.id)}>
               <img src={c.logo} alt="" className="size-5 rounded-full" /> {c.name}
             </button>
           ))}
@@ -165,7 +193,9 @@ export function DepositModal({ me, onClose }: { me: Me; onClose: () => void }) {
             <span className="break-all text-center">{agent}</span>
             {copied ? <Check className="size-3.5 shrink-0 text-good" /> : <Copy className="size-3.5 shrink-0" />}
           </button>
-          <p className="mt-1 text-center text-[12px] text-faint">Send only {token.label} on {chain.name} to this address.</p>
+          {!isHl && <p className="mt-1 text-center text-[12px] text-faint">Send only {token.label} on {chain.name} to this address.</p>}
+          {isHl && <p className="mt-1 text-center text-[11.5px] text-faint">This is your Hyperliquid account. Send USDC from another Hyperliquid account, or use the button below to send USDC from Arbitrum (at least 5).</p>}
+          {chain.id === 4217 && <p className="mt-1 text-center text-[11.5px] text-faint">Tempo has no gas coin. Your wallet pays the fee in a stablecoin.</p>}
           {isSolana && <p className="mt-1 text-center text-[11.5px] text-faint">Your Solana wallet is separate from your EVM wallet. Funds here are used for Solana actions only.</p>}
         </div>
 
@@ -173,7 +203,7 @@ export function DepositModal({ me, onClose }: { me: Me; onClose: () => void }) {
           <span className="h-px flex-1 bg-line" /> or <span className="h-px flex-1 bg-line" />
         </div>
 
-        <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder={`Amount of ${token.label}`} className="w-full rounded-lg border border-line bg-raised px-3 py-2 font-mono text-[14px] outline-none placeholder:text-faint focus:border-faint" />
+        <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder={isHl ? "Amount of USDC on Arbitrum" : `Amount of ${token.label}`} className="w-full rounded-lg border border-line bg-raised px-3 py-2 font-mono text-[14px] outline-none placeholder:text-faint focus:border-faint" />
         <button disabled={step !== null || (isSolana ? !!solWallet && !Number(amount) : !!wallet && !Number(amount)) || (isSolana && !solAddress)} onClick={deposit} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-3 py-2.5 text-[14px] font-medium text-white hover:brightness-110 disabled:opacity-50">
           {step && <Loader2 className="size-4 animate-spin" />}
           {step ?? (isSolana ? (solWallet ? `Deposit from ${short(solWallet.address)}` : "Connect a Solana wallet to deposit") : wallet ? `Deposit from ${short(wallet.address)}` : "Connect a wallet to deposit")}
