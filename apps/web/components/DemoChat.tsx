@@ -33,7 +33,12 @@ const TOKENS: Record<string, Logo> = {
 };
 const COINS: Record<string, { price: number; maxLeverage: number }> = quotes.coins;
 const STABLES = ["USDC", "USDT", "DAI"];
-const LENDING: Record<string, { apy: number }> = quotes.lending;
+const LENDING: Record<string, Record<string, { apy: number }>> = quotes.lending;
+const CHAINS: Record<string, Logo> = {
+  ethereum: { label: "Ethereum", src: "/icons/chain-ethereum.png" },
+  base: { label: "Base", src: "/icons/chain-base.png" },
+  arbitrum: { label: "Arbitrum", src: "/icons/chain-arbitrum.png" },
+};
 const STOCK_PRICES: Record<string, { price: number }> = quotes.stocks;
 const PREDICTIONS: Record<string, number> = quotes.predictions;
 
@@ -117,7 +122,10 @@ function toCard(raw: string): DemoCard | null {
     if (!hit || !yes) return null;
     const country = hit[1];
     const price = side === "YES" ? yes : 1 - yes;
-    const cost = number(/\$\s*(\d+(?:\.\d+)?)/) ?? 10;
+    // "5 yes" or "5 shares" is a number of shares. "$20" is an amount to spend. With neither, the amount is $10.
+    const asked = number(/(\d+(?:\.\d+)?)\s*(?:yes|no|shares?)\b/);
+    const shares = asked ?? Math.round((((number(/\$\s*(\d+(?:\.\d+)?)/) ?? 10) / price) * 10)) / 10;
+    const cost = shares * price;
     const logos: Logo[] = [{ label: country.name, src: `/icons/flag-${country.code}.png`, fill: true }];
     if (has(text, /fifa|world cup/)) logos.push({ label: "FIFA", src: "/icons/fifa.svg", tile: true });
     return {
@@ -125,8 +133,8 @@ function toCard(raw: string): DemoCard | null {
       venue: VENUES.world,
       title: `Bought ${side} · ${country.name}`,
       note: "FIFA World Cup 2030",
-      steps: ["Reading the World market", `Getting the ${side} price for ${country.name}`, `Buying ${amount(Math.round((cost / price) * 10) / 10)} ${side} shares`, "Order filled"],
-      facts: [["Price", `${Math.round(price * 100)}¢`], ["Shares", amount(Math.round((cost / price) * 10) / 10)], ["Cost", money(cost)]],
+      steps: ["Reading the World market", `Getting the ${side} price for ${country.name}`, `Buying ${amount(shares)} ${side} shares`, "Order filled"],
+      facts: [["Price", `${Math.round(price * 100)}¢`], ["Shares", amount(shares)], ["Cost", money(cost)]],
     };
   }
 
@@ -152,7 +160,8 @@ function toCard(raw: string): DemoCard | null {
     const [symbol, logo] = token(text) ?? ["BTC", TOKENS.BTC!];
     const coin = COINS[symbol];
     if (!coin) return null;
-    const size = number(new RegExp(`(\\d*\\.?\\d+)\\s*${symbol}\\b`, "i")) ?? 0.01;
+    // The size is the number before the coin or before "long" or "short".
+    const size = number(new RegExp(`(\\d*\\.?\\d+)\\s*(?:${symbol}|long|short)\\b`, "i")) ?? 0.01;
     const lev = Math.min(leverage ?? 10, coin.maxLeverage);
     const long = side !== "short";
     // The liquidation price follows the Hyperliquid rule for isolated margin: the maintenance margin is half of the margin at maximum leverage.
@@ -183,18 +192,20 @@ function toCard(raw: string): DemoCard | null {
     };
   }
 
-  // Lending on Aave.
+  // Lending on Aave. The chain is Ethereum when the words name none.
   if (has(text, /\b(aave|lend|lent|lending|supply|supplied)\b/)) {
     const [symbol, logo] = token(text) ?? ["ETH", TOKENS.ETH!];
+    const chain = Object.keys(CHAINS).find((c) => has(text, new RegExp(`\\b${c}\\b`))) ?? "ethereum";
     const price = priceOf(symbol);
-    const rate = LENDING[symbol];
+    const rate = LENDING[chain]?.[symbol];
     if (price === null || !rate) return null;
     const qty = number(/(\d+(?:\.\d+)?)/) ?? 1;
     return {
-      logos: [logo],
+      logos: [logo, CHAINS[chain]!],
       venue: VENUES.aave,
       title: `Lent ${amount(qty)} ${symbol}`,
-      steps: ["Reading the Aave market", `Approving ${symbol}`, `Supplying ${amount(qty)} ${symbol}`, "Supply confirmed"],
+      note: CHAINS[chain]!.label,
+      steps: [`Reading the Aave market on ${CHAINS[chain]!.label}`, `Approving ${symbol}`, `Supplying ${amount(qty)} ${symbol}`, "Supply confirmed"],
       facts: [["APY", `${rate.apy.toFixed(2)}%`], ["Value", money(qty * price)]],
     };
   }

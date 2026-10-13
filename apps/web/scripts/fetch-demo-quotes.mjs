@@ -4,8 +4,9 @@ import { writeFileSync } from "node:fs";
 
 const COINS = ["BTC", "ETH", "SOL", "HYPE"];
 const STOCKS = ["TSLA", "AAPL", "NVDA", "GOOGL", "META", "NFLX", "COIN"];
-// Aave v3 Ethereum market. The Aave API calls Ether "WETH".
-const LEND = { ETH: "WETH", USDC: "USDC", USDT: "USDT", DAI: "DAI", BTC: "WBTC" };
+// Aave v3 markets. The Aave API calls Ether "WETH". Bitcoin is WBTC or cbBTC, as the market has it.
+const AAVE_MARKETS = { ethereum: "AaveV3Ethereum", base: "AaveV3Base", arbitrum: "AaveV3Arbitrum" };
+const LEND = { ETH: ["WETH"], USDC: ["USDC"], USDT: ["USDT"], DAI: ["DAI"], BTC: ["WBTC", "cbBTC"] };
 // No public market exists for the 2030 World Cup. Set these by hand from the World app.
 const PREDICTIONS = { spain: 0.17, france: 0.15, brazil: 0.09, argentina: 0.12, germany: 0.08, england: 0.13, portugal: 0.07, usa: 0.03, italy: 0.05, netherlands: 0.05, japan: 0.03, mexico: 0.02, croatia: 0.02, morocco: 0.03, colombia: 0.03, uruguay: 0.03, belgium: 0.03, canada: 0.02, korea: 0.02, australia: 0.02 };
 
@@ -32,11 +33,18 @@ const stocks = Object.fromEntries(
 
 const aave = await json("https://api.v3.aave.com/graphql", {
   method: "POST",
-  body: JSON.stringify({ query: "{ markets(request:{chainIds:[1]}){ name reserves{ underlyingToken{symbol} supplyInfo{apy{formatted}} } } }" }),
+  body: JSON.stringify({ query: "{ markets(request:{chainIds:[1,8453,42161]}){ name reserves{ underlyingToken{symbol} supplyInfo{apy{formatted}} } } }" }),
 });
-const market = aave.data.markets.find((m) => m.name === "AaveV3Ethereum");
 const lending = Object.fromEntries(
-  Object.entries(LEND).map(([symbol, aaveSymbol]) => [symbol, { apy: Number(market.reserves.find((r) => r.underlyingToken.symbol === aaveSymbol).supplyInfo.apy.formatted) }]),
+  Object.entries(AAVE_MARKETS).map(([chain, name]) => {
+    const market = aave.data.markets.find((m) => m.name === name);
+    const rates = {};
+    for (const [symbol, aaveSymbols] of Object.entries(LEND)) {
+      const reserve = market.reserves.find((r) => aaveSymbols.includes(r.underlyingToken.symbol));
+      if (reserve) rates[symbol] = { apy: Number(reserve.supplyInfo.apy.formatted) };
+    }
+    return [chain, rates];
+  }),
 );
 
 // The "Up or Down" markets of BTC, ETH and SOL for the current 5 and 15 minute windows. The price to buy Up is the best ask. The price to buy Down is one minus the best bid of Up.
