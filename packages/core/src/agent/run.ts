@@ -12,6 +12,7 @@ import { allToolNames, buildTools, SERVER_NAME, type WalletRequest } from "../to
 import { getOrCreateWallet } from "../wallet";
 import type { Permission } from "../delegation";
 import { memoryBlock, reflectOnChat, type ChatRecord } from "../memory";
+import { PAYBOX_MCP_URL, payboxToken } from "../paybox";
 import { CHAT_SYSTEM_PROMPT } from "./prompts";
 
 export type AgentEvent =
@@ -174,6 +175,7 @@ async function* runOne(args: RunArgs): AsyncGenerator<AgentEvent> {
     return {};
   };
   const pending: Intent[] = [];
+  const payboxAuth = await payboxToken(args.userId).catch(() => null);
   const wallet = { ...(await getOrCreateWallet(args.userId)), ...(args.dryRun ? { autoExecute: false } : {}) };
   const permissions: Permission[] = [];
   const walletRequests: WalletRequest[] = [];
@@ -189,13 +191,14 @@ async function* runOne(args: RunArgs): AsyncGenerator<AgentEvent> {
     cwd,
     abortController: abort,
     resume: args.resume,
-    mcpServers: { [SERVER_NAME]: server, ...docsServers },
+    // PayBox (World app) for a user who connected it: its tools act on the user's PayBox account.
+    mcpServers: { [SERVER_NAME]: server, ...docsServers, ...(payboxAuth ? { paybox: { type: "http" as const, url: PAYBOX_MCP_URL, headers: { authorization: `Bearer ${payboxAuth}` } } } : {}) },
     // Project skills only. User-level settings of the host machine do not load.
     settingSources: ["project"],
     // Only the product skills. The skills bundled with the runtime stay off.
     skills: PRODUCT_SKILLS,
     tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch", "Skill"],
-    allowedTools: [...allToolNames(), "Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch", "Skill", ...docsTools],
+    allowedTools: [...allToolNames(), "Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch", "Skill", ...docsTools, ...(payboxAuth ? ["mcp__paybox"] : [])],
     disallowedTools: docsBlocked,
     // Tools that are not pre-approved are denied. No prompt can appear on a server.
     permissionMode: "dontAsk",

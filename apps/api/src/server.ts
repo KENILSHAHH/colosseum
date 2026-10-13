@@ -8,7 +8,7 @@ import {
   config, ensureUser, executeIntent, getDepositWallet, getIntent, getOrCreateWallet, getPositions, isExpired, listDeposits, listIntents,
   migrate, privyEnabled, sponsorAddress, syncDepositWallet, syncSolanaWallet, getSolanaWallet, walletSender, privySignIn, promptPriceUsd, recordCharge, runChatAgent, sendToRun, signToken, sql, startLlmProxy, transition, updateWalletSettings, verifyToken, withdrawToOwner, type AgentEvent,
 } from "@app/core";
-import { delegation, jobs, lifi } from "@app/core";
+import { delegation, jobs, lifi, paybox } from "@app/core";
 import { cancelGuard, listGuards } from "@app/core/guards";
 import { agentWalletFetch, mpp, mppEnabled, mppRecipient, ousdBalance, TEMPO_CHAIN_ID } from "./mpp";
 
@@ -56,7 +56,7 @@ const auth = async (c: Context<Env>, next: () => Promise<void>) => {
   c.set("userId", claims.sub);
   await next();
 };
-for (const p of ["/me", "/wallet", "/wallet/*", "/positions", "/chat", "/chat/*", "/intents", "/intents/*", "/guards", "/guards/*", "/billing", "/billing/*", "/permissions", "/permissions/*", "/deposit", "/deposit/*", "/jobs", "/jobs/*"]) app.use(p, auth);
+for (const p of ["/me", "/wallet", "/wallet/*", "/positions", "/chat", "/chat/*", "/intents", "/intents/*", "/guards", "/guards/*", "/billing", "/billing/*", "/permissions", "/permissions/*", "/deposit", "/deposit/*", "/jobs", "/jobs/*", "/paybox", "/paybox/status", "/paybox/start"]) app.use(p, auth);
 
 // ── Account and agent wallet ───────────────────────────────────────────────
 app.get("/me", async (c) => {
@@ -262,6 +262,29 @@ app.post("/intents/:id/confirm", async (c) => {
   const claimed = await transition(intent.id, userId, "pending", "executing");
   if (!claimed) return c.json({ error: "The intent is not pending." }, 409);
   return c.json(await executeIntent(claimed, (await getOrCreateWallet(userId)).address));
+});
+
+// ── PayBox (World app): each user connects their own account ─────────────────
+app.get("/paybox/status", async (c) => c.json(await paybox.payboxStatus(c.get("userId"))));
+app.post("/paybox/start", async (c) => {
+  if (!paybox.payboxEnabled()) return c.json({ error: "PayBox is not set up on this server." }, 503);
+  return c.json({ url: await paybox.startPayboxAuth(c.get("userId")) });
+});
+app.delete("/paybox", async (c) => {
+  await paybox.disconnectPaybox(c.get("userId"));
+  return c.json({ connected: false });
+});
+// PayBox sends the browser back here. The state names the user, so this route needs no session.
+app.get("/paybox/callback", async (c) => {
+  const code = c.req.query("code"), state = c.req.query("state"), error = c.req.query("error");
+  const app = config().PUBLIC_APP_URL;
+  if (error || !code || !state) return c.redirect(`${app}/?paybox=${encodeURIComponent(error ?? "missing")}`);
+  try {
+    await paybox.finishPayboxAuth(code, state);
+    return c.redirect(`${app}/?paybox=connected`);
+  } catch (err) {
+    return c.redirect(`${app}/?paybox=${encodeURIComponent(err instanceof Error ? err.message.slice(0, 120) : "failed")}`);
+  }
 });
 
 // ── Scheduled jobs ─────────────────────────────────────────────────────────

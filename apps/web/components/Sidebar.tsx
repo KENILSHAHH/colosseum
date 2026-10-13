@@ -3,7 +3,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarClock, Check, Link2, Loader2, LogIn, LogOut, Menu, Plus, ShieldCheck, UserRound, Wallet } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api, short, usd, type Me, type Permission } from "@/lib/api";
+import { api, post, short, usd, type Me, type Permission } from "@/lib/api";
 import { useLinkedWallet } from "@/lib/linkedWallet";
 import { DepositPanel } from "./DepositPanel";
 import { MenuContext, MenuItem } from "./MenuItem";
@@ -95,6 +95,7 @@ export function Sidebar({ session, onNewChat }: { session: ReturnType<typeof use
             <Balances />
             <DepositPanel me={me} />
             <LinkedWallet me={me} />
+            <Paybox />
             <Jobs />
             <Guards />
           </>
@@ -228,6 +229,30 @@ function Jobs() {
         ))
       )}
     </MenuItem>
+  );
+}
+
+/** PayBox (World app): the user signs in to their own PayBox account, and the agent gets its tools. */
+function Paybox() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["paybox"], queryFn: () => api<{ available: boolean; connected: boolean }>("/paybox/status") });
+  const [busy, setBusy] = useState(false);
+  if (!data?.available) return null;
+  return (
+    <Section title="World (PayBox)">
+      {data.connected ? (
+        <div className="flex items-center justify-between text-[12.5px]">
+          <span className="flex items-center gap-1.5 text-good"><Check className="size-3.5" /> Connected</span>
+          <button onClick={async () => { await api("/paybox", { method: "DELETE" }); qc.invalidateQueries({ queryKey: ["paybox"] }); }} className="text-[11.5px] text-faint hover:text-bad">
+            Disconnect
+          </button>
+        </div>
+      ) : (
+        <button disabled={busy} onClick={async () => { setBusy(true); try { const r = await post<{ url: string }>("/paybox/start"); window.location.href = r.url; } finally { setBusy(false); } }} className="flex w-full items-center justify-center gap-2 rounded-lg border border-line px-3 py-2 text-[13px] text-dim hover:bg-raised hover:text-ink disabled:opacity-60">
+          {busy && <Loader2 className="size-3.5 animate-spin" />} Connect PayBox
+        </button>
+      )}
+    </Section>
   );
 }
 

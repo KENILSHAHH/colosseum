@@ -210,3 +210,17 @@ create index if not exists agent_memory_user on agent_memory(user_id, created_at
 -- The Privy Solana wallet of the user, and whether the server signer is on it.
 alter table users add column if not exists solana_wallet_id text;
 alter table users add column if not exists solana_signer boolean not null default false;
+
+-- PayBox (World app): sign-ins in progress and the tokens of each connected user (encrypted).
+create table if not exists paybox_auth (
+  state      text primary key,
+  user_id    text not null,
+  verifier   text not null,
+  created_at timestamptz not null default now()
+);
+create table if not exists paybox_tokens (
+  user_id       text primary key,
+  access_token  text not null,
+  refresh_token text,
+  expires_at    timestamptz not null
+);
