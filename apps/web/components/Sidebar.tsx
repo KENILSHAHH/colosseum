@@ -118,7 +118,7 @@ interface Balance { address: string; usd: number | null; solana: { address: stri
 
 /** The one wallet of the user: its balance in USD. A click copies the address. */
 function Balances() {
-  const { data } = useQuery({ queryKey: ["balances"], queryFn: () => api<Balance>("/billing/balances"), refetchInterval: 30_000 });
+  const { data } = useQuery({ queryKey: ["balances"], queryFn: () => api<Balance>("/billing/balances"), refetchInterval: 15_000 });
   const [copied, setCopied] = useState<string | null>(null);
   const total = !data ? null : data.usd === null && data.solana?.usd == null ? null : (data.usd ?? 0) + (data.solana?.usd ?? 0);
   const row = (label: string, logo: string, address: string, value: number | null) => (

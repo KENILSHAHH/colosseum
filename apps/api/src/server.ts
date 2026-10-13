@@ -107,6 +107,25 @@ app.post("/permissions/:id/grant", async (c) => {
 });
 app.delete("/permissions/:id", async (c) => c.json({ removed: await delegation.removePermission(c.req.param("id"), c.get("userId")) }));
 
+/** The tokens of the wallet plus the tokens in the legacy key, when that is a different address. USDC on Arbitrum in the legacy key waits for Hyperliquid, so it is left out. */
+const assetCache = new Map<string, { at: number; value: Promise<Awaited<ReturnType<typeof lifi.allWalletAssets>>> }>();
+async function withLegacy(address: string, legacy: string, minUsd: number) {
+  // The deposit window polls every 5 seconds. A 4-second cache keeps that from multiplying the LI.FI and RPC calls.
+  const key = `${address}:${legacy}:${minUsd}`;
+  const hit = assetCache.get(key);
+  if (hit && Date.now() - hit.at < 4_000) return hit.value;
+  const value = readWithLegacy(address, legacy, minUsd);
+  assetCache.set(key, { at: Date.now(), value });
+  value.catch(() => assetCache.delete(key));
+  return value;
+}
+async function readWithLegacy(address: string, legacy: string, minUsd: number) {
+  if (address.toLowerCase() === legacy.toLowerCase()) return lifi.allWalletAssets(address, minUsd);
+  const [main, old] = await Promise.all([lifi.allWalletAssets(address, minUsd), lifi.allWalletAssets(legacy, minUsd).catch(() => null)]);
+  const extra = (old ?? []).filter((a) => !(a.chainId === 42161 && a.symbol === "USDC")).map((a) => ({ ...a, chainName: `${a.chainName} (old address)` }));
+  return main === null && old === null ? null : [...(main ?? []), ...extra];
+}
+
 app.get("/positions", async (c) => {
   const userId = c.get("userId");
   const w = await getOrCreateWallet(userId);
@@ -114,7 +133,7 @@ app.get("/positions", async (c) => {
   // Every token of the wallet on every EVM chain (Tempo too) and on Solana, with logos, next to the positions.
   const [positions, assets, solana] = await Promise.all([
     getPositions(userId, w.address, w.hlAddress),
-    lifi.allWalletAssets(w.address, 0.01),
+    withLegacy(w.address, w.hlAddress, 0.01),
     sw ? solanaBalances(sw.address).catch(() => null) : null,
   ]);
   return c.json({ ...positions, assets, solana: sw ? { address: sw.address, tokens: solana } : null });
@@ -347,9 +366,9 @@ app.get("/billing", async (c) => {
 // The balance of the one wallet of the user, in USD: tokens on every chain LI.FI reads, plus OUSD on Tempo.
 app.get("/billing/balances", async (c) => {
   const userId = c.get("userId");
-  const { address } = await getOrCreateWallet(userId);
-  // allWalletAssets reads Tempo too, so OUSD is in it.
-  const [assets, sw] = await Promise.all([lifi.allWalletAssets(address, 0), getSolanaWallet(userId).catch(() => null)]);
+  const { address, hlAddress } = await getOrCreateWallet(userId);
+  // allWalletAssets reads Tempo too, so OUSD is in it. Tokens in the legacy key (an old deposit address) count as well.
+  const [assets, sw] = await Promise.all([withLegacy(address, hlAddress, 0), getSolanaWallet(userId).catch(() => null)]);
   const sol = sw ? await solanaBalances(sw.address).catch(() => null) : null;
   return c.json({
     address, usd: assets === null ? null : assets.reduce((s, a) => s + (a.usd ?? 0), 0),

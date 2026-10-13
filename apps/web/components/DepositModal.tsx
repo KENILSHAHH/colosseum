@@ -2,12 +2,12 @@
 
 import { useConnectWallet, useWallets } from "@privy-io/react-auth";
 import { useSignAndSendTransaction, useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, Loader2, X } from "lucide-react";
 import QRCode from "qrcode";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { post, short, type Me } from "@/lib/api";
+import { api, post, short, usd, type Me } from "@/lib/api";
 
 /** `id` 0 is Solana: its own wallet and its own assets, used only for Solana actions. `id` -1 is Hyperliquid: USDC goes to the Hyperliquid account. */
 const SOLANA = 0;
@@ -83,6 +83,12 @@ export function DepositModal({ me, onClose }: { me: Me; onClose: () => void }) {
   const solAddress = me.solana?.address ?? null;
   // A Solana wallet of the user other than the Privy one, for example Phantom.
   const solWallet = solWallets.find((w) => w.address !== solAddress);
+  // While the window is open the balance is read every 5 seconds, so a deposit to the QR address shows at once.
+  const { data: bal } = useQuery({ queryKey: ["balances"], queryFn: () => api<{ usd: number | null; solana: { usd: number | null } | null }>("/billing/balances"), refetchInterval: 5_000 });
+  const total = bal ? (bal.usd ?? 0) + (bal.solana?.usd ?? 0) : null;
+  const [start, setStart] = useState<number | null>(null);
+  useEffect(() => { if (start === null && total !== null) setStart(total); }, [start, total]);
+  const received = start !== null && total !== null && total - start >= 0.5 ? total - start : null;
   const agent = isSolana ? (solAddress ?? "") : isHl ? me.wallet.hlAddress : me.wallet.address;
 
   useEffect(() => {
@@ -208,6 +214,7 @@ export function DepositModal({ me, onClose }: { me: Me; onClose: () => void }) {
           {step && <Loader2 className="size-4 animate-spin" />}
           {step ?? (isSolana ? (solWallet ? `Deposit from ${short(solWallet.address)}` : "Connect a Solana wallet to deposit") : wallet ? `Deposit from ${short(wallet.address)}` : "Connect a wallet to deposit")}
         </button>
+        {received !== null && <p className="mt-2 text-[12.5px] text-good">Received about {usd(received)}. It is in your wallet now.</p>}
         {note && <p className={`mt-2 text-[12.5px] ${note.ok ? "text-good" : "text-bad"}`}>{note.text}</p>}
       </div>
     </div>,

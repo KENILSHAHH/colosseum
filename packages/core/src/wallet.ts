@@ -33,9 +33,17 @@ async function privyWallet(userId: string): Promise<{ address: Address; walletId
   return d?.enabled && d.address && d.walletId ? { address: d.address as Address, walletId: d.walletId } : null;
 }
 
+/** The Privy wallet address of the user, with or without the server signer. */
+async function privyAddress(userId: string): Promise<Address | null> {
+  const [u] = await sql()<{ deposit_wallet: string | null }[]>`select deposit_wallet from users where id = ${userId}`;
+  return (u?.deposit_wallet as Address | undefined) ?? null;
+}
+
 async function toWallet(r: Row): Promise<AgentWallet> {
-  const p = await privyWallet(r.user_id);
-  return { userId: r.user_id, address: p?.address ?? (r.evm_address as Address), hlAddress: r.evm_address as Address, privy: !!p, autoExecute: r.auto_execute, maxActionUsd: Number(r.max_action_usd) };
+  // The address the user sees and deposits to is always the Privy wallet when the user has one, even before the server
+  // signer is added. Else a deposit made in that window lands in the legacy key and the app does not show it.
+  const [p, shown] = await Promise.all([privyWallet(r.user_id), privyAddress(r.user_id)]);
+  return { userId: r.user_id, address: p?.address ?? shown ?? (r.evm_address as Address), hlAddress: r.evm_address as Address, privy: !!p, autoExecute: r.auto_execute, maxActionUsd: Number(r.max_action_usd) };
 }
 
 export async function getOrCreateWallet(userId: string): Promise<AgentWallet> {
@@ -58,6 +66,8 @@ export async function updateWalletSettings(userId: string, s: { autoExecute?: bo
 export async function walletAccount(userId: string) {
   const p = await privyWallet(userId);
   if (p) return depositAccount(p) as ReturnType<typeof privateKeyToAccount>;
+  // A user with a Privy wallet acts only from it. The app adds the server signer when the user opens it.
+  if (await privyAddress(userId)) throw new Error("The wallet is not ready for the agent yet. Open the app once so it can finish the wallet setup, then try again.");
   return legacyAccount(userId);
 }
 
