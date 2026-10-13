@@ -375,7 +375,7 @@ function MessageView({ message, streaming }: { message: Message; streaming: bool
   return (
     <div className="mb-8">
       {blocks.map((p, i) => {
-        if (p.kind === "steps") return <StepsLine key={p.steps[0]!.id} steps={p.steps} live={streaming && i === blocks.length - 1} />;
+        if (p.kind === "steps") return <StepsLine key={p.steps[0]!.id} steps={p.steps} />;
         if (p.kind === "text")
           return (
             <div key={i} className="prose-agent">
@@ -401,18 +401,11 @@ function MessageView({ message, streaming }: { message: Message; streaming: bool
 }
 
 /**
- * The steps of the agent as one line. While the agent works, the line shows the step that runs now.
- * After that it rotates through the steps. A click opens the full list.
+ * The steps of the agent as one line. The line always shows the latest step. A click opens the full list.
  */
-function StepsLine({ steps, live }: { steps: Extract<Part, { kind: "tool" }>[]; live: boolean }) {
+function StepsLine({ steps }: { steps: Extract<Part, { kind: "tool" }>[] }) {
   const [open, setOpen] = useState(false);
-  const [turn, setTurn] = useState(0);
-  useEffect(() => {
-    if (live || open || steps.length < 2) return;
-    const t = setInterval(() => setTurn((n) => n + 1), 2200);
-    return () => clearInterval(t);
-  }, [live, open, steps.length]);
-  const shown = live ? steps[steps.length - 1]! : steps[turn % steps.length]!;
+  const shown = steps[steps.length - 1]!;
   const detail = toolDetail(shown.name, shown.input);
   const pending = steps.some((s) => s.result === undefined);
   const failed = steps.filter((s) => s.isError).length;
