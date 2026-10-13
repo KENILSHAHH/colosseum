@@ -46,13 +46,15 @@ export async function privySignIn(accessToken: string): Promise<PrivySignIn> {
   // Privy verified each linked wallet with a signature, so a row with one of these addresses belongs to this person.
   const addresses = wallets.map((w) => w.address);
   const [claimed] = await sql()<{ id: string }[]>`
-    update users set privy_did = ${did}
+    update users set privy_did = ${did}, deposit_wallet = coalesce(deposit_wallet, ${embedded.address})
     where id = (select id from users where id in ${sql()(addresses)} and privy_did is null order by (id = ${embedded.address}) asc, created_at asc limit 1)
     returning id`;
   if (claimed) return { ok: true, userId: claimed.id };
 
-  // "on conflict": two parallel first requests create one user.
-  await sql()`insert into users (id, privy_did) values (${embedded.address}, ${did}) on conflict do nothing`;
+  // "on conflict": two parallel first requests create one user. The Privy wallet is stored at once, so the first page load
+  // already shows it as the deposit address (the server signer and the wallet id come later from syncDepositWallet).
+  await sql()`insert into users (id, privy_did, deposit_wallet) values (${embedded.address}, ${did}, ${embedded.address}) on conflict do nothing`;
+  await sql()`update users set deposit_wallet = coalesce(deposit_wallet, ${embedded.address}) where privy_did = ${did}`;
   const [row] = await sql()<{ id: string }[]>`select id from users where privy_did = ${did}`;
   if (!row) return { ok: false, status: 409, error: "The account is not ready yet." };
   return { ok: true, userId: row.id };
