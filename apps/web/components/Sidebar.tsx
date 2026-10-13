@@ -29,12 +29,7 @@ export function Sidebar({ session, onNewChat, onOpenChat, activeChatId }: { sess
         <button onClick={() => set(!collapsed)} title={collapsed ? "Open the menu" : "Close the menu"} aria-label={collapsed ? "Open the menu" : "Close the menu"} aria-expanded={!collapsed} className="grid size-9 shrink-0 place-items-center rounded-lg text-dim hover:bg-raised hover:text-ink">
           <Menu className="size-5" />
         </button>
-        {!collapsed && (
-          <>
-            <div className="grid size-7 place-items-center rounded-lg bg-gradient-to-br from-[#9945FF] to-[#14F195] text-sm font-semibold text-black">◆</div>
-            <div className="text-[15px] font-semibold tracking-tight">PayI Finance</div>
-          </>
-        )}
+        {!collapsed && <div className="text-[15px] font-semibold tracking-tight">PayI Finance</div>}
       </div>
 
       <button onClick={onNewChat} title="New chat" aria-label="New chat" className={collapsed ? "mx-auto mb-3 grid size-10 place-items-center rounded-lg border border-line text-dim hover:bg-raised hover:text-ink" : "mx-3 mb-3 flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm text-dim hover:bg-raised hover:text-ink"}>
