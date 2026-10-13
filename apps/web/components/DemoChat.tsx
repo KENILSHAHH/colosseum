@@ -18,6 +18,7 @@ const VENUES = {
   robinhood: { label: "Robinhood", src: "/icons/robinhood.svg", tile: true },
   hyperliquid: { label: "Hyperliquid", src: "/icons/hyperliquid.webp" },
   aave: { label: "Aave", src: "/icons/aave.webp" },
+  jupiter: { label: "Jupiter", src: "/icons/jupiter.png" },
   world: { label: "World", src: "/icons/world.png" },
 } satisfies Record<string, Logo>;
 
@@ -149,6 +150,22 @@ function toCard(raw: string): DemoCard | null {
       title: `${long ? "Long" : "Short"} ${lev}x · ${amount(size)} ${symbol}`,
       steps: ["Reading the Hyperliquid account", `Setting ${lev}x leverage on ${symbol}`, `Opening a ${long ? "long" : "short"} of ${amount(size)} ${symbol}`, "Order filled"],
       facts: [["Entry", money(coin.price)], ["Margin", money((size * coin.price) / lev)], ["Liq.", money(liq)]],
+    };
+  }
+
+  // Lending on Jupiter Lend (Solana).
+  if (has(text, /\b(jupiter|jup)\b/) && has(text, /\b(lend|lent|lending|supply|supplied|deposit)\b/)) {
+    const [symbol, logo] = token(text) ?? ["SOL", TOKENS.SOL!];
+    const price = priceOf(symbol);
+    const rate = (quotes.jupiterLend as Record<string, { apy: number }>)[symbol];
+    if (price === null || !rate) return null;
+    const qty = number(/(\d+(?:\.\d+)?)/) ?? 1;
+    return {
+      logos: [logo],
+      venue: VENUES.jupiter,
+      title: `Lent ${amount(qty)} ${symbol}`,
+      steps: ["Reading the Jupiter Lend market", `Depositing ${amount(qty)} ${symbol}`, "Signing the transaction", "Deposit confirmed"],
+      facts: [["APY", `${rate.apy.toFixed(2)}%`], ["Value", money(qty * price)]],
     };
   }
 

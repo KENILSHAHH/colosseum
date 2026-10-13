@@ -51,6 +51,12 @@ const updown = Object.fromEntries(
   ),
 );
 
-const out = { fetchedAt: new Date().toISOString(), coins, stocks, lending, predictions: PREDICTIONS, updown };
+// Jupiter Lend on Solana. The rate is in basis points: 391 is 3.91%.
+const jup = await json("https://lite-api.jup.ag/lend/v1/earn/tokens");
+const jupiterLend = Object.fromEntries(
+  ["SOL", "USDC"].map((symbol) => [symbol, { apy: Number(jup.find((t) => t.asset.uiSymbol === symbol).totalRate) / 100 }]),
+);
+
+const out = { fetchedAt: new Date().toISOString(), coins, stocks, lending, predictions: PREDICTIONS, updown, jupiterLend };
 writeFileSync(new URL("../lib/demo-quotes.json", import.meta.url), `${JSON.stringify(out, null, 2)}\n`);
 console.log(out);
