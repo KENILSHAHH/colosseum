@@ -118,23 +118,35 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-interface Balance { address: string; usd: number | null }
+interface Balance { address: string; usd: number | null; solana: { address: string; usd: number | null; canSign: boolean } | null }
 
 /** The one wallet of the user: its balance in USD. A click copies the address. */
 function Balances() {
   const { data } = useQuery({ queryKey: ["balances"], queryFn: () => api<Balance>("/billing/balances"), refetchInterval: 30_000 });
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+  const total = !data ? null : data.usd === null && data.solana?.usd == null ? null : (data.usd ?? 0) + (data.solana?.usd ?? 0);
+  const row = (label: string, address: string, value: number | null) => (
+    <button
+      key={label}
+      onClick={async () => { await navigator.clipboard.writeText(address); setCopied(address); setTimeout(() => setCopied(null), 1500); }}
+      title={`Copy ${address}`}
+      className="flex w-full items-center justify-between gap-2 rounded-md py-1 text-[11.5px] text-faint hover:text-dim"
+    >
+      <span className="flex min-w-0 items-center gap-1.5">
+        <span className="text-dim">{label}</span>
+        <span className="truncate font-mono">{short(address)}</span>
+      </span>
+      {copied === address ? <Check className="size-3 shrink-0 text-good" /> : <span className="shrink-0 font-mono tabular-nums">{value === null ? "—" : usd(value)}</span>}
+    </button>
+  );
   return (
-    <MenuItem icon={Wallet} label="Wallet" value={!data ? "…" : data.usd === null ? "not read" : usd(data.usd)}>
-      <button
-        disabled={!data}
-        onClick={async () => { await navigator.clipboard.writeText(data!.address); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
-        title={data ? `Copy ${data.address}` : undefined}
-        className="flex w-full items-center justify-between gap-2 rounded-md py-1 font-mono text-[11.5px] text-faint hover:text-dim"
-      >
-        <span>{data ? short(data.address) : "…"}</span>
-        {copied ? <Check className="size-3 text-good" /> : <span>Copy</span>}
-      </button>
+    <MenuItem icon={Wallet} label="Wallet" value={!data ? "…" : total === null ? "not read" : usd(total)}>
+      {!data ? <span className="text-[11.5px] text-faint">…</span> : (
+        <>
+          {row("EVM", data.address, data.usd)}
+          {data.solana && row("Solana", data.solana.address, data.solana.usd)}
+        </>
+      )}
     </MenuItem>
   );
 }

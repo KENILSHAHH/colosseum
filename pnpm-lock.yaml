@@ -62,7 +62,19 @@ importers:
     dependencies:
       '@privy-io/react-auth':
         specifier: ^3.48.1
-        version: 3.48.1(@solana-program/system@0.10.0(@solana/kit@5.5.1(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)))(@solana-program/token@0.9.0(@solana/kit@5.5.1(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)))(@solana/kit@5.5.1(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10))(@solana/sysvars@8.4.0(typescript@7.0.2))(@stripe/stripe-js@9.17.0)(@tanstack/query-core@5.104.1)(@tanstack/react-query@5.104.1(react@19.3.0))(@types/react@19.3.0)(bufferutil@4.1.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(typescript@7.0.2)(use-sync-external-store@1.4.0(react@19.3.0))(utf-8-validate@5.0.10)(zod@4.6.5)
+        version: 3.48.1(@solana-program/memo@0.15.0(@solana/kit@8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)))(@solana-program/system@0.15.0(@solana/kit@8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)))(@solana-program/token@0.17.0(@solana/kit@8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)))(@solana/kit@8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10))(@solana/sysvars@8.4.0(typescript@7.0.2))(@stripe/stripe-js@9.17.0)(@tanstack/query-core@5.104.1)(@tanstack/react-query@5.104.1(react@19.3.0))(@types/react@19.3.0)(bufferutil@4.1.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(typescript@7.0.2)(use-sync-external-store@1.4.0(react@19.3.0))(utf-8-validate@5.0.10)(zod@4.6.5)
+      '@solana-program/memo':
+        specifier: ^0.15.0
+        version: 0.15.0(@solana/kit@8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10))
+      '@solana-program/system':
+        specifier: ^0.15.0
+        version: 0.15.0(@solana/kit@8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10))
+      '@solana-program/token':
+        specifier: ^0.17.0
+        version: 0.17.0(@solana/kit@8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10))
+      '@solana/kit':
+        specifier: 8.4.0
+        version: 8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)
       '@tanstack/react-query':
         specifier: ^5.104.1
         version: 5.104.1(react@19.3.0)
@@ -1326,16 +1338,31 @@ packages:
     peerDependencies:
       '@solana/kit': ^5.0
 
+  '@solana-program/memo@0.15.0':
+    resolution: {integrity: sha512-OofePobs2d+mZpCYq/dJ1Mv4//TVBHiYZN1is9CfsrkuMJboVK3ghv9T1bzdbM4OcywGLEyvZ4HjCByfg3RWwg==}
+    peerDependencies:
+      '@solana/kit': ^8.3.0
+
   '@solana-program/system@0.10.0':
     resolution: {integrity: sha512-Go+LOEZmqmNlfr+Gjy5ZWAdY5HbYzk2RBewD9QinEU/bBSzpFfzqDRT55JjFRBGJUvMgf3C2vfXEGT4i8DSI4g==}
     peerDependencies:
       '@solana/kit': ^5.0
+
+  '@solana-program/system@0.15.0':
+    resolution: {integrity: sha512-xE08wZCyNRhOaO/XNRd9A3kSLfUrTe/BnmAHhql8uqc2eriNy2ZmnvaGRrs0m+kOSihvUbANzHljmJsTzGL5kg==}
+    peerDependencies:
+      '@solana/kit': ^8.3.0
 
   '@solana-program/token-2022@0.6.1':
     resolution: {integrity: sha512-Ex02cruDMGfBMvZZCrggVR45vdQQSI/unHVpt/7HPt/IwFYB4eTlXtO8otYZyqV/ce5GqZ8S6uwyRf0zy6fdbA==}
     peerDependencies:
       '@solana/kit': ^5.0
       '@solana/sysvars': ^5.0
+
+  '@solana-program/token@0.17.0':
+    resolution: {integrity: sha512-l7EhF3lCWXXdOllGI8qnbF4Pj7pCT/5zJTW2lPsNUQfa7G28pnFhSssHW2GCW7dzGttSHgPdJYdQRB5rvQoN9Q==}
+    peerDependencies:
+      '@solana/kit': ^8.3.0
 
   '@solana-program/token@0.9.0':
     resolution: {integrity: sha512-vnZxndd4ED4Fc56sw93cWZ2djEeeOFxtaPS8SPf5+a+JZjKA/EnKqzbE1y04FuMhIVrLERQ8uR8H2h72eZzlsA==}
@@ -6019,7 +6046,7 @@ snapshots:
 
   '@privy-io/popup@0.0.6': {}
 
-  '@privy-io/react-auth@3.48.1(@solana-program/system@0.10.0(@solana/kit@5.5.1(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)))(@solana-program/token@0.9.0(@solana/kit@5.5.1(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)))(@solana/kit@5.5.1(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10))(@solana/sysvars@8.4.0(typescript@7.0.2))(@stripe/stripe-js@9.17.0)(@tanstack/query-core@5.104.1)(@tanstack/react-query@5.104.1(react@19.3.0))(@types/react@19.3.0)(bufferutil@4.1.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(typescript@7.0.2)(use-sync-external-store@1.4.0(react@19.3.0))(utf-8-validate@5.0.10)(zod@4.6.5)':
+  '@privy-io/react-auth@3.48.1(@solana-program/memo@0.15.0(@solana/kit@8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)))(@solana-program/system@0.15.0(@solana/kit@8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)))(@solana-program/token@0.17.0(@solana/kit@8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)))(@solana/kit@8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10))(@solana/sysvars@8.4.0(typescript@7.0.2))(@stripe/stripe-js@9.17.0)(@tanstack/query-core@5.104.1)(@tanstack/react-query@5.104.1(react@19.3.0))(@types/react@19.3.0)(bufferutil@4.1.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(typescript@7.0.2)(use-sync-external-store@1.4.0(react@19.3.0))(utf-8-validate@5.0.10)(zod@4.6.5)':
     dependencies:
       '@base-org/account': 1.1.1(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(typescript@7.0.2)(use-sync-external-store@1.4.0(react@19.3.0))(utf-8-validate@5.0.10)(zod@4.6.5)
       '@base-ui/react': 1.9.0(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -6066,9 +6093,10 @@ snapshots:
       x402: 0.7.3(@solana/sysvars@8.4.0(typescript@7.0.2))(@tanstack/query-core@5.104.1)(@tanstack/react-query@5.104.1(react@19.3.0))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(typescript@7.0.2)(utf-8-validate@5.0.10)
       zustand: 5.0.15(@types/react@19.3.0)(react@19.3.0)(use-sync-external-store@1.4.0(react@19.3.0))
     optionalDependencies:
-      '@solana-program/system': 0.10.0(@solana/kit@5.5.1(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10))
-      '@solana-program/token': 0.9.0(@solana/kit@5.5.1(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10))
-      '@solana/kit': 5.5.1(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)
+      '@solana-program/memo': 0.15.0(@solana/kit@8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10))
+      '@solana-program/system': 0.15.0(@solana/kit@8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10))
+      '@solana-program/token': 0.17.0(@solana/kit@8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10))
+      '@solana/kit': 8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)
     transitivePeerDependencies:
       - '@azure/app-configuration'
       - '@azure/cosmos'
@@ -6784,14 +6812,27 @@ snapshots:
     dependencies:
       '@solana/kit': 5.5.1(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)
 
+  '@solana-program/memo@0.15.0(@solana/kit@8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10))':
+    dependencies:
+      '@solana/kit': 8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)
+
   '@solana-program/system@0.10.0(@solana/kit@5.5.1(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10))':
     dependencies:
       '@solana/kit': 5.5.1(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)
+
+  '@solana-program/system@0.15.0(@solana/kit@8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10))':
+    dependencies:
+      '@solana/kit': 8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)
 
   '@solana-program/token-2022@0.6.1(@solana/kit@5.5.1(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10))(@solana/sysvars@8.4.0(typescript@7.0.2))':
     dependencies:
       '@solana/kit': 5.5.1(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)
       '@solana/sysvars': 8.4.0(typescript@7.0.2)
+
+  '@solana-program/token@0.17.0(@solana/kit@8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10))':
+    dependencies:
+      '@solana-program/system': 0.15.0(@solana/kit@8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10))
+      '@solana/kit': 8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)
 
   '@solana-program/token@0.9.0(@solana/kit@5.5.1(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10))':
     dependencies:
@@ -7075,6 +7116,42 @@ snapshots:
       - fastestsmallesttextencoderdecoder
       - utf-8-validate
 
+  '@solana/kit@8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)':
+    dependencies:
+      '@solana/accounts': 8.4.0(typescript@7.0.2)
+      '@solana/addresses': 8.4.0(typescript@7.0.2)
+      '@solana/codecs': 8.4.0(typescript@7.0.2)
+      '@solana/errors': 8.4.0(typescript@7.0.2)
+      '@solana/functional': 8.4.0(typescript@7.0.2)
+      '@solana/instruction-plans': 8.4.0(typescript@7.0.2)
+      '@solana/instructions': 8.4.0(typescript@7.0.2)
+      '@solana/keys': 8.4.0(typescript@7.0.2)
+      '@solana/offchain-messages': 8.4.0(typescript@7.0.2)
+      '@solana/plugin-core': 8.4.0(typescript@7.0.2)
+      '@solana/plugin-interfaces': 8.4.0(typescript@7.0.2)
+      '@solana/program-client-core': 8.4.0(typescript@7.0.2)
+      '@solana/programs': 8.4.0(typescript@7.0.2)
+      '@solana/promises': 8.4.0(typescript@7.0.2)
+      '@solana/rpc': 8.4.0(typescript@7.0.2)
+      '@solana/rpc-api': 8.4.0(typescript@7.0.2)
+      '@solana/rpc-parsed-types': 8.4.0(typescript@7.0.2)
+      '@solana/rpc-spec-types': 8.4.0(typescript@7.0.2)
+      '@solana/rpc-subscriptions': 8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)
+      '@solana/rpc-types': 8.4.0(typescript@7.0.2)
+      '@solana/signers': 8.4.0(typescript@7.0.2)
+      '@solana/subscribable': 8.4.0(typescript@7.0.2)
+      '@solana/sysvars': 8.4.0(typescript@7.0.2)
+      '@solana/transaction-confirmation': 8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)
+      '@solana/transaction-introspection': 8.4.0(typescript@7.0.2)
+      '@solana/transaction-messages': 8.4.0(typescript@7.0.2)
+      '@solana/transactions': 8.4.0(typescript@7.0.2)
+    optionalDependencies:
+      typescript: 7.0.2
+    transitivePeerDependencies:
+      - bufferutil
+      - fastestsmallesttextencoderdecoder
+      - utf-8-validate
+
   '@solana/kit@8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@6.0.6)':
     dependencies:
       '@solana/accounts': 8.4.0(typescript@7.0.2)
@@ -7349,6 +7426,19 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
+  '@solana/rpc-subscriptions-channel-websocket@8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)':
+    dependencies:
+      '@solana/errors': 8.4.0(typescript@7.0.2)
+      '@solana/functional': 8.4.0(typescript@7.0.2)
+      '@solana/rpc-subscriptions-spec': 8.4.0(typescript@7.0.2)
+      '@solana/subscribable': 8.4.0(typescript@7.0.2)
+      ws: 8.22.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
+    optionalDependencies:
+      typescript: 7.0.2
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
   '@solana/rpc-subscriptions-channel-websocket@8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@6.0.6)':
     dependencies:
       '@solana/errors': 8.4.0(typescript@7.0.2)
@@ -7393,6 +7483,26 @@ snapshots:
       '@solana/rpc-transformers': 5.5.1(typescript@7.0.2)
       '@solana/rpc-types': 5.5.1(typescript@7.0.2)
       '@solana/subscribable': 5.5.1(typescript@7.0.2)
+    optionalDependencies:
+      typescript: 7.0.2
+    transitivePeerDependencies:
+      - bufferutil
+      - fastestsmallesttextencoderdecoder
+      - utf-8-validate
+
+  '@solana/rpc-subscriptions@8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)':
+    dependencies:
+      '@solana/errors': 8.4.0(typescript@7.0.2)
+      '@solana/fast-stable-stringify': 8.4.0(typescript@7.0.2)
+      '@solana/functional': 8.4.0(typescript@7.0.2)
+      '@solana/promises': 8.4.0(typescript@7.0.2)
+      '@solana/rpc-spec-types': 8.4.0(typescript@7.0.2)
+      '@solana/rpc-subscriptions-api': 8.4.0(typescript@7.0.2)
+      '@solana/rpc-subscriptions-channel-websocket': 8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)
+      '@solana/rpc-subscriptions-spec': 8.4.0(typescript@7.0.2)
+      '@solana/rpc-transformers': 8.4.0(typescript@7.0.2)
+      '@solana/rpc-types': 8.4.0(typescript@7.0.2)
+      '@solana/subscribable': 8.4.0(typescript@7.0.2)
     optionalDependencies:
       typescript: 7.0.2
     transitivePeerDependencies:
@@ -7602,6 +7712,25 @@ snapshots:
       '@solana/rpc-types': 5.5.1(typescript@7.0.2)
       '@solana/transaction-messages': 5.5.1(typescript@7.0.2)
       '@solana/transactions': 5.5.1(typescript@7.0.2)
+    optionalDependencies:
+      typescript: 7.0.2
+    transitivePeerDependencies:
+      - bufferutil
+      - fastestsmallesttextencoderdecoder
+      - utf-8-validate
+
+  '@solana/transaction-confirmation@8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)':
+    dependencies:
+      '@solana/addresses': 8.4.0(typescript@7.0.2)
+      '@solana/codecs-strings': 8.4.0(typescript@7.0.2)
+      '@solana/errors': 8.4.0(typescript@7.0.2)
+      '@solana/keys': 8.4.0(typescript@7.0.2)
+      '@solana/promises': 8.4.0(typescript@7.0.2)
+      '@solana/rpc': 8.4.0(typescript@7.0.2)
+      '@solana/rpc-subscriptions': 8.4.0(bufferutil@4.1.0)(typescript@7.0.2)(utf-8-validate@5.0.10)
+      '@solana/rpc-types': 8.4.0(typescript@7.0.2)
+      '@solana/transaction-messages': 8.4.0(typescript@7.0.2)
+      '@solana/transactions': 8.4.0(typescript@7.0.2)
     optionalDependencies:
       typescript: 7.0.2
     transitivePeerDependencies:

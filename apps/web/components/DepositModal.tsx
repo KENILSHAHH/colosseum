@@ -1,6 +1,7 @@
 "use client";
 
 import { useConnectWallet, useWallets } from "@privy-io/react-auth";
+import { useSignAndSendTransaction, useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, Loader2, X } from "lucide-react";
 import QRCode from "qrcode";
@@ -8,11 +9,19 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { post, short, type Me } from "@/lib/api";
 
+/** `id` 0 is Solana. It has its own wallet and its own assets, and it is used only for Solana actions. */
+const SOLANA = 0;
 const CHAINS = [
   { id: 8453, name: "Base", native: "ETH", logo: "/icons/chain-base.png" },
   { id: 42161, name: "Arbitrum", native: "ETH", logo: "/icons/chain-arbitrum.png" },
   { id: 1, name: "Ethereum", native: "ETH", logo: "/icons/chain-ethereum.png" },
+  { id: SOLANA, name: "Solana", native: "SOL", logo: "/icons/chain-solana.svg" },
 ];
+const SOLANA_TOKENS = [
+  { symbol: "SOL", label: "SOL", logo: "/icons/chain-solana.svg" },
+  { symbol: "USDC", label: "USDC", logo: "/icons/usdc.png" },
+  { symbol: "USDT", label: "USDT", logo: "/icons/usdt.png" },
+] as const;
 const TOKENS = [
   { symbol: "USDC", label: "USDC", logo: "/icons/usdc.png" },
   { symbol: "USDT", label: "USDT", logo: "/icons/usdt.png" },
@@ -35,18 +44,26 @@ export function DepositModal({ me, onClose }: { me: Me; onClose: () => void }) {
   const { wallets } = useWallets();
   const { connectWallet } = useConnectWallet();
   const [chainId, setChainId] = useState(8453);
-  const [symbol, setSymbol] = useState<(typeof TOKENS)[number]["symbol"]>("USDC");
+  const [symbol, setSymbol] = useState<string>("USDC");
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState<string | null>(null);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [qr, setQr] = useState<string | null>(null);
+  const { wallets: solWallets } = useSolanaWallets();
+  const { signAndSendTransaction } = useSignAndSendTransaction();
   const wallet = wallets.find((w) => w.walletClientType !== "privy" && w.walletClientType !== "privy-v2");
   const chain = CHAINS.find((c) => c.id === chainId) ?? CHAINS[0]!;
-  const token = TOKENS.find((t) => t.symbol === symbol) ?? TOKENS[0];
-  const agent = me.wallet.address;
+  const isSolana = chain.id === SOLANA;
+  const tokens: readonly { symbol: string; label: string; logo: string }[] = isSolana ? SOLANA_TOKENS : TOKENS;
+  const token = tokens.find((t) => t.symbol === symbol) ?? tokens[0]!;
+  const solAddress = me.solana?.address ?? null;
+  // A Solana wallet of the user other than the Privy one, for example Phantom.
+  const solWallet = solWallets.find((w) => w.address !== solAddress);
+  const agent = isSolana ? (solAddress ?? "") : me.wallet.address;
 
   useEffect(() => {
+    if (!agent) return setQr(null);
     QRCode.toDataURL(agent, { margin: 1, width: 360, color: { dark: "#000000", light: "#ffffff" } }).then(setQr, () => setQr(null));
   }, [agent]);
 
@@ -56,7 +73,27 @@ export function DepositModal({ me, onClose }: { me: Me; onClose: () => void }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, step]);
 
+  async function depositSolana() {
+    if (!solWallet) return connectWallet({ walletChainType: "solana-only" });
+    setNote(null);
+    try {
+      setStep("Prepare");
+      const plan = await post<{ transaction: string }>("/deposit/solana", { symbol: token.symbol, amount, from: solWallet.address });
+      setStep("Confirm in your wallet");
+      const bytes = Uint8Array.from(atob(plan.transaction), (c) => c.charCodeAt(0));
+      await signAndSendTransaction({ transaction: bytes, wallet: solWallet, chain: "solana:mainnet" });
+      setNote({ ok: true, text: "Sent. It arrives in your Solana wallet in a few seconds." });
+      setAmount("");
+      setTimeout(() => qc.invalidateQueries({ queryKey: ["balances"] }), 4_000);
+    } catch (e) {
+      setNote({ ok: false, text: e instanceof Error ? e.message.split("\n")[0]! : "The deposit failed" });
+    } finally {
+      setStep(null);
+    }
+  }
+
   async function deposit() {
+    if (isSolana) return depositSolana();
     if (!wallet) return connectWallet();
     setNote(null);
     try {
@@ -100,7 +137,7 @@ export function DepositModal({ me, onClose }: { me: Me; onClose: () => void }) {
         <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-faint">Network</p>
         <div className="flex flex-wrap gap-2">
           {CHAINS.map((c) => (
-            <button key={c.id} onClick={() => setChainId(c.id)} aria-pressed={c.id === chain.id} className={chip(c.id === chain.id)}>
+            <button key={c.id} onClick={() => { setChainId(c.id); setSymbol(c.id === SOLANA ? "SOL" : "USDC"); setNote(null); }} aria-pressed={c.id === chain.id} className={chip(c.id === chain.id)}>
               <img src={c.logo} alt="" className="size-5 rounded-full" /> {c.name}
             </button>
           ))}
@@ -108,7 +145,7 @@ export function DepositModal({ me, onClose }: { me: Me; onClose: () => void }) {
 
         <p className="mb-1.5 mt-4 text-[11px] font-medium uppercase tracking-wider text-faint">Asset</p>
         <div className="flex flex-wrap gap-2">
-          {TOKENS.map((t) => (
+          {tokens.map((t) => (
             <button key={t.symbol} onClick={() => setSymbol(t.symbol)} aria-pressed={t.symbol === symbol} className={chip(t.symbol === symbol)}>
               <img src={t.logo} alt="" className="size-5 rounded-full" /> {t.label}
             </button>
@@ -129,6 +166,7 @@ export function DepositModal({ me, onClose }: { me: Me; onClose: () => void }) {
             {copied ? <Check className="size-3.5 shrink-0 text-good" /> : <Copy className="size-3.5 shrink-0" />}
           </button>
           <p className="mt-1 text-center text-[12px] text-faint">Send only {token.label} on {chain.name} to this address.</p>
+          {isSolana && <p className="mt-1 text-center text-[11.5px] text-faint">Your Solana wallet is separate from your EVM wallet. Funds here are used for Solana actions only.</p>}
         </div>
 
         <div className="my-4 flex items-center gap-3 text-[11px] uppercase tracking-wider text-faint">
@@ -136,9 +174,9 @@ export function DepositModal({ me, onClose }: { me: Me; onClose: () => void }) {
         </div>
 
         <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder={`Amount of ${token.label}`} className="w-full rounded-lg border border-line bg-raised px-3 py-2 font-mono text-[14px] outline-none placeholder:text-faint focus:border-faint" />
-        <button disabled={step !== null || (!!wallet && !Number(amount))} onClick={deposit} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-3 py-2.5 text-[14px] font-medium text-white hover:brightness-110 disabled:opacity-50">
+        <button disabled={step !== null || (isSolana ? !!solWallet && !Number(amount) : !!wallet && !Number(amount)) || (isSolana && !solAddress)} onClick={deposit} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-3 py-2.5 text-[14px] font-medium text-white hover:brightness-110 disabled:opacity-50">
           {step && <Loader2 className="size-4 animate-spin" />}
-          {step ?? (wallet ? `Deposit from ${short(wallet.address)}` : "Connect a wallet to deposit")}
+          {step ?? (isSolana ? (solWallet ? `Deposit from ${short(solWallet.address)}` : "Connect a Solana wallet to deposit") : wallet ? `Deposit from ${short(wallet.address)}` : "Connect a wallet to deposit")}
         </button>
         {note && <p className={`mt-2 text-[12.5px] ${note.ok ? "text-good" : "text-bad"}`}>{note.text}</p>}
       </div>

@@ -8,7 +8,7 @@ import {
   config, ensureUser, executeIntent, getDepositWallet, getIntent, getOrCreateWallet, getPositions, isExpired, listDeposits, listIntents,
   migrate, privyEnabled, sponsorAddress, syncDepositWallet, syncSolanaWallet, getSolanaWallet, walletSender, privySignIn, promptPriceUsd, recordCharge, runChatAgent, sendToRun, signToken, sql, startLlmProxy, transition, updateWalletSettings, verifyToken, withdrawToOwner, type AgentEvent,
 } from "@app/core";
-import { delegation, jobs, lifi, paybox } from "@app/core";
+import { solanaBalances, buildSolanaDeposit, delegation, jobs, lifi, paybox, SOLANA_DEPOSIT_TOKENS } from "@app/core";
 import { cancelGuard, listGuards } from "@app/core/guards";
 import { agentWalletFetch, mpp, mppEnabled, mppRecipient, ousdBalance, TEMPO_CHAIN_ID } from "./mpp";
 
@@ -308,9 +308,14 @@ app.get("/billing", async (c) => {
 
 // The balance of the one wallet of the user, in USD: tokens on every chain LI.FI reads, plus OUSD on Tempo.
 app.get("/billing/balances", async (c) => {
-  const { address } = await getOrCreateWallet(c.get("userId"));
-  const [assets, ousd] = await Promise.all([lifi.walletAssets(address, 0).catch(() => null), ousdBalance(address)]);
-  return c.json({ address, usd: assets === null && ousd === null ? null : (assets ?? []).reduce((s, a) => s + (a.usd ?? 0), 0) + (ousd ?? 0) });
+  const userId = c.get("userId");
+  const { address } = await getOrCreateWallet(userId);
+  const [assets, ousd, sw] = await Promise.all([lifi.walletAssets(address, 0).catch(() => null), ousdBalance(address), getSolanaWallet(userId).catch(() => null)]);
+  const sol = sw ? await solanaBalances(sw.address).catch(() => null) : null;
+  return c.json({
+    address, usd: assets === null && ousd === null ? null : (assets ?? []).reduce((s, a) => s + (a.usd ?? 0), 0) + (ousd ?? 0),
+    solana: sw ? { address: sw.address, usd: sol === null ? null : sol.reduce((s, b) => s + (b.usd ?? 0), 0), canSign: sw.enabled } : null,
+  });
 });
 
 // Every token of the agent wallet that can move to OUSD on Tempo. Routes come from LI.FI, the API of jumper.xyz.
@@ -338,6 +343,15 @@ app.get("/deposit/options", (c) => c.json({ chains: lifi.DEPOSIT_CHAINS, symbols
 app.post("/deposit/transfer", async (c) => {
   const body = z.object({ chainId: z.number().int().refine((n) => (lifi.TRADING_DEPOSIT_CHAINS as readonly number[]).includes(n)), symbol: z.enum(lifi.DEPOSIT_SYMBOLS), amount: z.string().regex(/^\d+(\.\d+)?$/) }).parse(await c.req.json());
   return lifi.depositTransfer({ ...body, toAddress: (await getOrCreateWallet(c.get("userId"))).address }).then((q) => c.json(q), badRequest);
+});
+
+// A deposit from a Solana wallet of the user to the user's Privy Solana wallet. The browser wallet signs; the destination is fixed.
+app.post("/deposit/solana", async (c) => {
+  const body = z.object({ symbol: z.enum(Object.keys(SOLANA_DEPOSIT_TOKENS) as [string, ...string[]]), amount: z.string().regex(/^\d+(\.\d+)?$/), from: z.string().min(32).max(44) }).parse(await c.req.json());
+  const sw = await getSolanaWallet(c.get("userId"));
+  if (!sw) return c.json({ error: "Your Solana wallet is not ready. Sign in again." }, 409);
+  if (body.from === sw.address) return c.json({ error: "This is already your Solana wallet. Send from another wallet." }, 400);
+  return buildSolanaDeposit({ ...body, to: sw.address }).then((r) => c.json(r), badRequest);
 });
 
 // A direct deposit from an own wallet of the user: any listed token to OUSD on Tempo, delivered to the agent wallet. The browser signs.
