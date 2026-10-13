@@ -5,6 +5,7 @@ import { ArrowUp, ChevronRight, Mic, Square, Wrench } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { DemoChat } from "@/components/DemoChat";
 import { IntentCard } from "@/components/IntentCard";
 import { PermissionCard } from "@/components/PermissionCard";
 import { WalletRequestCard } from "@/components/WalletRequestCard";
@@ -106,7 +107,7 @@ export default function Page() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const [tab, setTab] = useState<"chat" | "positions">("chat");
+  const [tab, setTab] = useState<"chat" | "positions" | "demo">("chat");
   const sessionId = useRef<string | null>(null);
   const [chatId, setChatId] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
@@ -324,13 +325,14 @@ export default function Page() {
 
       <main className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-center gap-1 border-b border-line px-6 py-2">
-          {(["chat", "positions"] as const).map((t) => (
+          {(["chat", "positions", "demo"] as const).map((t) => (
             <button key={t} onClick={() => setTab(t)} className={`rounded-lg px-3 py-1.5 text-sm capitalize ${tab === t ? "bg-raised text-ink" : "text-dim hover:text-ink"}`}>
               {t}
             </button>
           ))}
         </div>
         {tab === "positions" && <div className="flex-1 overflow-y-auto">{session.signedIn ? <PositionsView /> : <p className="p-8 text-sm text-faint">Sign in to see positions.</p>}</div>}
+        <DemoChat active={tab === "demo"} />
         <div className={`flex-1 overflow-y-auto ${tab === "chat" ? "" : "hidden"}`}>
           <div className={`mx-auto w-full max-w-[760px] px-6 py-8 ${empty ? "flex min-h-full flex-col justify-center" : ""}`}>
             {empty && (
