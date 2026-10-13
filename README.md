@@ -1,4 +1,4 @@
-# DeFi Agent
+# PayI Finance
 
 A chat app with one AI agent for DeFi. The user funds an agent wallet. The agent reads protocol docs, builds what a request needs, acts from the wallet, and shows the position and the transaction ids.
 

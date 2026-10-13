@@ -32,7 +32,7 @@ export function Sidebar({ session, onNewChat, onOpenChat, activeChatId }: { sess
         {!collapsed && (
           <>
             <div className="grid size-7 place-items-center rounded-lg bg-gradient-to-br from-[#9945FF] to-[#14F195] text-sm font-semibold text-black">◆</div>
-            <div className="text-[15px] font-semibold tracking-tight">DeFi Agent</div>
+            <div className="text-[15px] font-semibold tracking-tight">PayI Finance</div>
           </>
         )}
       </div>

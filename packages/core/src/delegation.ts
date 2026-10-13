@@ -55,7 +55,7 @@ const view = (r: Row): Permission => ({
 });
 
 // ── Link the wallet ──────────────────────────────────────────────────────────
-const LINK_TEXT = (address: string, nonce: string) => `Link this wallet to your DeFi agent account.\n\nWallet: ${address}\nNonce: ${nonce}\n\nThis signature does not move funds and gives no permission.`;
+const LINK_TEXT = (address: string, nonce: string) => `Link this wallet to your PayI Finance account.\n\nWallet: ${address}\nNonce: ${nonce}\n\nThis signature does not move funds and gives no permission.`;
 
 export function linkChallenge(userId: string, address: string) {
   const a = address.toLowerCase();

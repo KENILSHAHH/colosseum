@@ -8,7 +8,7 @@ import {
   config, ensureUser, executeIntent, getDepositWallet, getIntent, getOrCreateWallet, getPositions, isExpired, listDeposits, listIntents,
   migrate, privyEnabled, sponsorAddress, syncDepositWallet, syncSolanaWallet, getSolanaWallet, walletSender, privySignIn, promptPriceUsd, recordCharge, runChatAgent, sendToRun, ChatRecorder, activeRecorders, listChats, getChat, deleteChat, signToken, sql, startLlmProxy, transition, updateWalletSettings, verifyToken, withdrawToOwner, type AgentEvent,
 } from "@app/core";
-import { solanaBalances, buildSolanaDeposit, delegation, jobs, lifi, paybox, SOLANA_DEPOSIT_TOKENS } from "@app/core";
+import { creditHyperliquid, hyperliquid, solanaBalances, buildSolanaDeposit, delegation, jobs, lifi, paybox, SOLANA_DEPOSIT_TOKENS } from "@app/core";
 import { cancelGuard, listGuards } from "@app/core/guards";
 import { agentWalletFetch, mpp, mppEnabled, mppRecipient, ousdBalance, TEMPO_CHAIN_ID } from "./mpp";
 
@@ -29,7 +29,7 @@ app.post("/auth/privy", async (c) => {
 });
 
 // ── Sign-in with a wallet signature. For scripts on a server without Privy. Off when Privy is on. ──
-const SIGN_IN_TEXT = (address: string, nonce: string) => `Sign in to the DeFi agent.\n\nAddress: ${address}\nNonce: ${nonce}\n\nThis signature does not move funds.`;
+const SIGN_IN_TEXT = (address: string, nonce: string) => `Sign in to PayI Finance.\n\nAddress: ${address}\nNonce: ${nonce}\n\nThis signature does not move funds.`;
 
 app.post("/auth/nonce", async (c) => {
   if (privyEnabled()) return c.json({ error: "Sign in through Privy." }, 404);
@@ -262,7 +262,7 @@ app.post("/paid/chat", async (c) => {
   const body = ChatBody.parse(await c.req.json());
 
   const price = promptPriceUsd();
-  const result = await mpp().charge({ amount: price.toString(), description: "One prompt to the DeFi agent" })(request);
+  const result = await mpp().charge({ amount: price.toString(), description: "One prompt to PayI Finance" })(request);
   if (result.status === 402) return result.challenge;
   const response = result.withReceipt(chatStream(userId, body, c.req.raw.signal, false));
   // The receipt reference is the hash of the payment transaction on Tempo.
@@ -372,9 +372,17 @@ app.get("/deposit/options", (c) => c.json({ chains: lifi.DEPOSIT_CHAINS, symbols
 
 // A deposit of trading funds: a plain transfer of a listed token to the agent wallet. The token stays as it is, ready for a position.
 app.post("/deposit/transfer", async (c) => {
-  const body = z.object({ chainId: z.number().int().refine((n) => (lifi.TRADING_DEPOSIT_CHAINS as readonly number[]).includes(n)), symbol: z.enum(lifi.DEPOSIT_SYMBOLS), amount: z.string().regex(/^\d+(\.\d+)?$/) }).parse(await c.req.json());
+  const body = z.object({ chainId: z.number().int().refine((n) => (lifi.TRADING_DEPOSIT_CHAINS as readonly number[]).includes(n)), symbol: z.string(), amount: z.string().regex(/^\d+(\.\d+)?$/) })
+    .refine((b) => lifi.TRADING_DEPOSIT_TOKENS[b.chainId]?.includes(b.symbol), "This token is not listed on this chain").parse(await c.req.json());
   return lifi.depositTransfer({ ...body, toAddress: (await getOrCreateWallet(c.get("userId"))).address }).then((q) => c.json(q), badRequest);
 });
+
+// A deposit to Hyperliquid: the browser sends USDC on Arbitrum to the Hyperliquid account of the user, then /deposit/hyperliquid/credit bridges it in.
+app.post("/deposit/hyperliquid", async (c) => {
+  const body = z.object({ amount: z.string().regex(/^\d+(\.\d+)?$/).refine((a) => Number(a) >= hyperliquid.HL_MIN_DEPOSIT_USDC, `Hyperliquid takes at least ${hyperliquid.HL_MIN_DEPOSIT_USDC} USDC`) }).parse(await c.req.json());
+  return lifi.depositTransfer({ chainId: 42161, symbol: "USDC", amount: body.amount, toAddress: (await getOrCreateWallet(c.get("userId"))).hlAddress }).then((q) => c.json(q), badRequest);
+});
+app.post("/deposit/hyperliquid/credit", (c) => creditHyperliquid(c.get("userId")).then(({ usdc, hyperliquidAccount }) => c.json({ usdc, hyperliquidAccount }), badRequest));
 
 // A deposit from a Solana wallet of the user to the user's Privy Solana wallet. The browser wallet signs; the destination is fixed.
 app.post("/deposit/solana", async (c) => {

@@ -27,3 +27,4 @@ export * as flashExecutor from "./flashExecutor";
 export * as paybox from "./paybox";
 export { buildSolanaDeposit, SOLANA_DEPOSIT_TOKENS } from "./solanaDeposit";
 export { balances as solanaBalances } from "./adapters/solana";
+export { creditHyperliquid } from "./hlDeposit";

@@ -175,7 +175,14 @@ export async function depositQuote(args: { chainId: number; symbol: string; amou
 }
 
 /** Chains where the agent wallet can act, so a token sent there is ready for a position. */
-export const TRADING_DEPOSIT_CHAINS = [8453, 42161, 1] as const;
+export const TRADING_DEPOSIT_CHAINS = [8453, 42161, 1, 4663, 4217] as const;
+
+/** Tokens a user can deposit on each trading chain, by LI.FI symbol. Robinhood Chain has no USDC; Tempo has no native coin. */
+export const TRADING_DEPOSIT_TOKENS: Record<number, readonly string[]> = {
+  8453: DEPOSIT_SYMBOLS, 42161: DEPOSIT_SYMBOLS, 1: DEPOSIT_SYMBOLS,
+  4663: ["native", "USDG", "USDe", "WETH"],
+  4217: ["USDCe", "USDT0", "PathUSD", "OUSD"],
+};
 
 /**
  * A plain transfer of a listed token from an own wallet of the user to `toAddress`. The token is not converted.
