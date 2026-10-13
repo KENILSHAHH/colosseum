@@ -60,6 +60,54 @@ export async function walletAssets(address: string, minUsd = MIN_ASSET_USD, { in
   return assets.filter((a) => a.usd !== null && a.usd >= minUsd).sort((x, y) => (y.usd ?? 0) - (x.usd ?? 0));
 }
 
+/** Chains that the LI.FI balance API does not read: Robinhood Chain (stock tokens) and Tempo. */
+export const RPC_READ_CHAINS = [4663, TEMPO_ID] as const;
+const MULTICALL3 = "0xcA11bde05977b3631167028862bE2a173976CA11" as const;
+const multicallAbi = [{ type: "function", name: "getEthBalance", stateMutability: "view", inputs: [{ name: "addr", type: "address" }], outputs: [{ type: "uint256" }] }] as const;
+let listCache: Map<number, { at: number; tokens: { address: string; symbol: string; decimals: number; priceUSD?: string; logoURI?: string }[] }> = new Map();
+
+/**
+ * Every token of the address on `RPC_READ_CHAINS`, read with Multicall3 from the chain RPC.
+ * The token list, the prices and the logos come from LI.FI (`GET /v1/tokens`).
+ */
+export async function rpcAssets(address: string, minUsd = MIN_ASSET_USD): Promise<WalletAsset[]> {
+  const known = await chains();
+  const perChain = await Promise.all(RPC_READ_CHAINS.map(async (chainId) => {
+    const chain = known.get(chainId);
+    if (!chain) return [];
+    let list = listCache.get(chainId);
+    if (!list || Date.now() - list.at > 600_000) {
+      const res = await getJson<{ tokens: Record<string, { address: string; symbol: string; decimals: number; priceUSD?: string; logoURI?: string }[]> }>(`${LIFI}/tokens?chains=${chainId}`);
+      list = { at: Date.now(), tokens: Object.values(res.tokens).flat() };
+      listCache.set(chainId, list);
+    }
+    const client = createPublicClient({ transport: http(chain.metamask.rpcUrls[0]) });
+    const results = await client.multicall({
+      multicallAddress: MULTICALL3, allowFailure: true,
+      contracts: list.tokens.map((t) => t.address === NATIVE
+        ? { address: MULTICALL3, abi: multicallAbi, functionName: "getEthBalance" as const, args: [address as Address] }
+        : { address: t.address as Address, abi: erc20Abi, functionName: "balanceOf" as const, args: [address as Address] }),
+    });
+    return list.tokens.flatMap((t, i): WalletAsset[] => {
+      const r = results[i]!;
+      if (r.status !== "success" || !(r.result as bigint)) return [];
+      const amount = Number(formatUnits(r.result as bigint, t.decimals));
+      const price = Number(t.priceUSD ?? 0) || null;
+      const logo = t.logoURI && !t.logoURI.endsWith("unknown.svg") ? t.logoURI : null;
+      return [{ chainId, chainName: chain.name, symbol: t.symbol, token: t.address, decimals: t.decimals, amount, usd: price === null ? null : amount * price, native: t.address === NATIVE, logo, chainLogo: chain.logoURI ?? null }];
+    });
+  }));
+  return perChain.flat().filter((a) => a.usd !== null && a.usd >= minUsd).sort((x, y) => (y.usd ?? 0) - (x.usd ?? 0));
+}
+
+/** `walletAssets` plus the chains that only an RPC read covers. A source that fails is left out; both failing gives null. */
+export async function allWalletAssets(address: string, minUsd = MIN_ASSET_USD): Promise<WalletAsset[] | null> {
+  const [lifi, rpc] = await Promise.all([walletAssets(address, minUsd, { includeTempo: true }).catch(() => null), rpcAssets(address, minUsd).catch(() => null)]);
+  if (lifi === null && rpc === null) return null;
+  const seen = new Set((rpc ?? []).map((a) => `${a.chainId}:${a.token.toLowerCase()}`));
+  return [...(rpc ?? []), ...(lifi ?? []).filter((a) => !seen.has(`${a.chainId}:${a.token.toLowerCase()}`))].sort((x, y) => (y.usd ?? 0) - (x.usd ?? 0));
+}
+
 function quote(args: { chainId: number; token: string; amount: bigint; from: string; to: string }) {
   const q = new URLSearchParams({ fromChain: String(args.chainId), toChain: String(TEMPO_ID), fromToken: args.token, toToken: OUSD_TEMPO, fromAmount: args.amount.toString(), fromAddress: args.from, toAddress: args.to, integrator: INTEGRATOR, slippage: "0.01" });
   return getJson<LifiQuote>(`${LIFI}/quote?${q}`);

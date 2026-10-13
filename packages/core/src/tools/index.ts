@@ -106,8 +106,8 @@ export function buildTools(ctx: ToolContext) {
 
   const tools = [
     // ── Read ────────────────────────────────────────────────────────────────
-    tool("wallet_overview", "The user's agent wallet: address, native and USDC balances on Ethereum, Arbitrum and Base, Hyperliquid balances and positions, Aave accounts, active guards. Call it before any action to know what funds exist and where.",
-      {}, run(async () => ({ ...(await getPositions(ctx.userId, address, hlAddress)), hyperliquidAccount: hlAddress, gasSponsor: sponsorEnabled() ? { on: true, chains: SPONSORED_CHAINS, note: "The wallet needs no native gas on these chains." } : { on: false } })), read),
+    tool("wallet_overview", "The user's agent wallet: address, every token on every EVM chain with its USD value (Robinhood Chain stock tokens and Tempo too), Hyperliquid balances and positions, Aave accounts, active guards. Call it before any action to know what funds exist and where.",
+      {}, run(async () => ({ ...(await getPositions(ctx.userId, address, hlAddress)), tokens: await lifi.allWalletAssets(address, 0.01), hyperliquidAccount: hlAddress, gasSponsor: sponsorEnabled() ? { on: true, chains: SPONSORED_CHAINS, note: "The wallet needs no native gas on these chains." } : { on: false } })), read),
 
     tool("rates_compare", "Compare live supply (lending) rates for one asset across Ethereum, Arbitrum, Base, Solana, HyperEVM, Tempo and Robinhood Chain. Returns rows with APY, TVL and a source link per row.",
       { asset: z.string().describe("Token symbol, for example USDC"), chains: z.array(z.string()).optional().describe("Chain name filter"), minTvlUsd: z.number().optional() },

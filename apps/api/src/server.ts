@@ -114,7 +114,7 @@ app.get("/positions", async (c) => {
   // Every token of the wallet on every EVM chain (Tempo too) and on Solana, with logos, next to the positions.
   const [positions, assets, solana] = await Promise.all([
     getPositions(userId, w.address, w.hlAddress),
-    lifi.walletAssets(w.address, 0.01, { includeTempo: true }).catch(() => null),
+    lifi.allWalletAssets(w.address, 0.01),
     sw ? solanaBalances(sw.address).catch(() => null) : null,
   ]);
   return c.json({ ...positions, assets, solana: sw ? { address: sw.address, tokens: solana } : null });
@@ -348,10 +348,11 @@ app.get("/billing", async (c) => {
 app.get("/billing/balances", async (c) => {
   const userId = c.get("userId");
   const { address } = await getOrCreateWallet(userId);
-  const [assets, ousd, sw] = await Promise.all([lifi.walletAssets(address, 0).catch(() => null), ousdBalance(address), getSolanaWallet(userId).catch(() => null)]);
+  // allWalletAssets reads Tempo too, so OUSD is in it.
+  const [assets, sw] = await Promise.all([lifi.allWalletAssets(address, 0), getSolanaWallet(userId).catch(() => null)]);
   const sol = sw ? await solanaBalances(sw.address).catch(() => null) : null;
   return c.json({
-    address, usd: assets === null && ousd === null ? null : (assets ?? []).reduce((s, a) => s + (a.usd ?? 0), 0) + (ousd ?? 0),
+    address, usd: assets === null ? null : assets.reduce((s, a) => s + (a.usd ?? 0), 0),
     solana: sw ? { address: sw.address, usd: sol === null ? null : sol.reduce((s, b) => s + (b.usd ?? 0), 0), canSign: sw.enabled } : null,
   });
 });
