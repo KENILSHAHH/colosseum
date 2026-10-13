@@ -126,7 +126,7 @@ function Balances() {
   const { data } = useQuery({ queryKey: ["balances"], queryFn: () => api<Balance>("/billing/balances"), refetchInterval: 30_000 });
   const [copied, setCopied] = useState<string | null>(null);
   const total = !data ? null : data.usd === null && data.solana?.usd == null ? null : (data.usd ?? 0) + (data.solana?.usd ?? 0);
-  const row = (label: string, address: string, value: number | null) => (
+  const row = (label: string, logo: string, address: string, value: number | null) => (
     <button
       key={label}
       onClick={async () => { await navigator.clipboard.writeText(address); setCopied(address); setTimeout(() => setCopied(null), 1500); }}
@@ -134,6 +134,7 @@ function Balances() {
       className="flex w-full items-center justify-between gap-2 rounded-md py-1 text-[11.5px] text-faint hover:text-dim"
     >
       <span className="flex min-w-0 items-center gap-1.5">
+        <img src={logo} alt="" className="size-4 rounded-full" />
         <span className="text-dim">{label}</span>
         <span className="truncate font-mono">{short(address)}</span>
       </span>
@@ -144,8 +145,8 @@ function Balances() {
     <MenuItem icon={Wallet} label="Wallet" value={!data ? "…" : total === null ? "not read" : usd(total)}>
       {!data ? <span className="text-[11.5px] text-faint">…</span> : (
         <>
-          {row("EVM", data.address, data.usd)}
-          {data.solana && row("Solana", data.solana.address, data.solana.usd)}
+          {row("EVM", "/icons/eth.png", data.address, data.usd)}
+          {data.solana && row("Solana", "/icons/chain-solana.svg", data.solana.address, data.solana.usd)}
         </>
       )}
     </MenuItem>

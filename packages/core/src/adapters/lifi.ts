@@ -19,7 +19,7 @@ export class NeedsGasError extends Error {}
 /** Thrown when the balance is zero or too small to move. Not a failure: there is nothing to do. */
 export class NothingToConvertError extends Error {}
 
-interface LifiChain { id: number; name: string; coin: string; metamask: { rpcUrls: string[]; blockExplorerUrls: string[]; nativeCurrency: { name: string; symbol: string; decimals: number } } }
+interface LifiChain { id: number; name: string; coin: string; logoURI?: string; metamask: { rpcUrls: string[]; blockExplorerUrls: string[]; nativeCurrency: { name: string; symbol: string; decimals: number } } }
 interface LifiBalance { address: string; symbol: string; decimals: number; amount: string; chainId: number; verificationStatus?: string }
 interface LifiQuote {
   tool: string;
@@ -27,7 +27,7 @@ interface LifiQuote {
   transactionRequest: { to: Address; data: Hex; value?: string; gasLimit?: string; gasPrice?: string; chainId: number };
 }
 
-export interface WalletAsset { chainId: number; chainName: string; symbol: string; token: string; decimals: number; amount: number; usd: number | null; native: boolean }
+export interface WalletAsset { chainId: number; chainName: string; symbol: string; token: string; decimals: number; amount: number; usd: number | null; native: boolean; logo: string | null; chainLogo: string | null }
 
 let chainCache: { at: number; chains: Map<number, LifiChain> } | undefined;
 async function chains(): Promise<Map<number, LifiChain>> {
@@ -44,15 +44,17 @@ async function viemChain(chainId: number) {
   return defineChain({ id: c.id, name: c.name, nativeCurrency: c.metamask.nativeCurrency, rpcUrls: { default: { http: c.metamask.rpcUrls } }, blockExplorers: { default: { name: "Explorer", url: c.metamask.blockExplorerUrls[0]?.replace(/\/$/, "") ?? "" } } });
 }
 
-/** Every token of the address that LI.FI can route, with a USD value. Tempo is not a source: the destination is there. */
-export async function walletAssets(address: string, minUsd = MIN_ASSET_USD): Promise<WalletAsset[]> {
+/** Every token of the address that LI.FI can route, with a USD value. Tempo is not a source for a conversion (the destination is there), so it is left out unless `includeTempo`. */
+export async function walletAssets(address: string, minUsd = MIN_ASSET_USD, { includeTempo = false } = {}): Promise<WalletAsset[]> {
   const [res, known] = await Promise.all([getJson<{ balances: Record<string, LifiBalance[]> }>(`${LIFI}/wallets/${address}/balances`), chains()]);
-  const held = Object.values(res.balances).flat().filter((b) => BigInt(b.amount) > 0n && Number(b.chainId) !== TEMPO_ID && b.verificationStatus !== "unverified" && known.has(Number(b.chainId)));
+  const held = Object.values(res.balances).flat().filter((b) => BigInt(b.amount) > 0n && (includeTempo || Number(b.chainId) !== TEMPO_ID) && b.verificationStatus !== "unverified" && known.has(Number(b.chainId)));
   const assets = await Promise.all(
     held.slice(0, 40).map(async (b): Promise<WalletAsset> => {
       const amount = Number(formatUnits(BigInt(b.amount), Number(b.decimals)));
-      const price = await getJson<{ priceUSD?: string }>(`${LIFI}/token?chain=${b.chainId}&token=${b.address}`).then((t) => Number(t.priceUSD ?? 0) || null).catch(() => null);
-      return { chainId: Number(b.chainId), chainName: known.get(Number(b.chainId))!.name, symbol: b.symbol, token: b.address, decimals: Number(b.decimals), amount, usd: price === null ? null : amount * price, native: b.address === NATIVE };
+      const t = await getJson<{ priceUSD?: string; logoURI?: string }>(`${LIFI}/token?chain=${b.chainId}&token=${b.address}`).catch(() => null);
+      const price = Number(t?.priceUSD ?? 0) || null;
+      const chain = known.get(Number(b.chainId))!;
+      return { chainId: chain.id, chainName: chain.name, symbol: b.symbol, token: b.address, decimals: Number(b.decimals), amount, usd: price === null ? null : amount * price, native: b.address === NATIVE, logo: t?.logoURI || null, chainLogo: chain.logoURI ?? null };
     }),
   );
   return assets.filter((a) => a.usd !== null && a.usd >= minUsd).sort((x, y) => (y.usd ?? 0) - (x.usd ?? 0));

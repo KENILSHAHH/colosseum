@@ -127,4 +127,7 @@ export interface Positions {
   aaveV4: { chain: string; spoke: string; suppliedUsd: number; collateralUsd: number; debtUsd: number; healthFactor: number | null; netApyPct: number }[];
   guards: { id: string; venue: string; params: Record<string, any>; status: string; lastValue: number | null; lastCheck: string | null }[];
   errors: string[];
+  /** Every token of the wallet on every EVM chain. null when LI.FI did not answer. */
+  assets: { chainId: number; chainName: string; symbol: string; token: string; amount: number; usd: number | null; logo: string | null; chainLogo: string | null }[] | null;
+  solana: { address: string; tokens: { mint: string; symbol: string; amount: number; usd: number | null; logo: string | null }[] | null } | null;
 }

@@ -110,7 +110,14 @@ app.delete("/permissions/:id", async (c) => c.json({ removed: await delegation.r
 app.get("/positions", async (c) => {
   const userId = c.get("userId");
   const w = await getOrCreateWallet(userId);
-  return c.json(await getPositions(userId, w.address, w.hlAddress));
+  const sw = await getSolanaWallet(userId).catch(() => null);
+  // Every token of the wallet on every EVM chain (Tempo too) and on Solana, with logos, next to the positions.
+  const [positions, assets, solana] = await Promise.all([
+    getPositions(userId, w.address, w.hlAddress),
+    lifi.walletAssets(w.address, 0.01, { includeTempo: true }).catch(() => null),
+    sw ? solanaBalances(sw.address).catch(() => null) : null,
+  ]);
+  return c.json({ ...positions, assets, solana: sw ? { address: sw.address, tokens: solana } : null });
 });
 
 // ── Chat ───────────────────────────────────────────────────────────────────

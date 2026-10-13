@@ -8,11 +8,11 @@ const JUP = "https://lite-api.jup.ag";
 export async function balances(address: string) {
   const raw = await getJson<Record<string, { amount: string; uiAmount: number; slot: number; isFrozen: boolean }>>(`${JUP}/ultra/v1/balances/${address}`);
   const mints = Object.keys(raw).filter((k) => k !== "SOL" && raw[k]!.uiAmount > 0);
-  const info = mints.length ? await getJson<{ id: string; symbol: string; usdPrice?: number }[]>(`${JUP}/tokens/v2/search?query=${mints.slice(0, 50).join(",")}`).catch(() => []) : [];
+  const info = mints.length ? await getJson<{ id: string; symbol: string; usdPrice?: number; icon?: string }[]>(`${JUP}/tokens/v2/search?query=${mints.slice(0, 50).join(",")}`).catch(() => []) : [];
   const sol = await getJson<Record<string, { usdPrice: number }>>(`${JUP}/price/v3?ids=So11111111111111111111111111111111111111112`).catch(() => ({}) as Record<string, { usdPrice: number }>);
   return Object.entries(raw).filter(([, v]) => v.uiAmount > 0).map(([mint, v]) => {
-    const meta = mint === "SOL" ? { symbol: "SOL", usdPrice: sol["So11111111111111111111111111111111111111112"]?.usdPrice } : info.find((t) => t.id === mint);
-    return { mint, symbol: meta?.symbol ?? mint.slice(0, 6), amount: v.uiAmount, usd: meta?.usdPrice ? v.uiAmount * meta.usdPrice : null };
+    const meta = mint === "SOL" ? { symbol: "SOL", usdPrice: sol["So11111111111111111111111111111111111111112"]?.usdPrice, icon: undefined } : info.find((t) => t.id === mint);
+    return { mint, symbol: meta?.symbol ?? mint.slice(0, 6), amount: v.uiAmount, usd: meta?.usdPrice ? v.uiAmount * meta.usdPrice : null, logo: meta?.icon ?? null };
   });
 }
 

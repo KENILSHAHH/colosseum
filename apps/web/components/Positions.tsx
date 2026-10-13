@@ -2,187 +2,181 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, RefreshCw, ShieldCheck } from "lucide-react";
-import { api, usd, type Positions } from "@/lib/api";
+import { useState } from "react";
+import { api, short, usd, type Positions } from "@/lib/api";
 
 const n = (v: number | null | undefined, d = 2) => (v === null || v === undefined ? "—" : v.toLocaleString("en-US", { maximumFractionDigits: d }));
 
-export function PositionsView() {
-  const { data, isLoading, isFetching, refetch, error } = useQuery({ queryKey: ["positions"], queryFn: () => api<Positions>("/positions"), refetchInterval: 10_000 });
+/** Local logos for the chains of this product. Other chains use the LI.FI logo. */
+const CHAIN_LOGO: Record<number, string> = {
+  1: "/icons/chain-ethereum.png", 8453: "/icons/chain-base.png", 42161: "/icons/chain-arbitrum.png", 4663: "/icons/chain-robinhood.svg",
+  4217: "/icons/chain-tempo.svg", 999: "/icons/chain-hyperliquid.svg", 0: "/icons/chain-solana.svg",
+};
+const CHAIN_ID: Record<string, number> = { ethereum: 1, base: 8453, arbitrum: 42161 };
 
-  if (isLoading) return <p className="p-8 text-sm text-faint">Reading positions from the chains…</p>;
-  if (error || !data) return <p className="p-8 text-sm text-bad">{(error as Error)?.message ?? "Could not load positions."}</p>;
-
-  const hl = data.hyperliquid;
-  const walletUsd = data.balances.reduce((s, b) => s + (b.usdc ?? 0), 0);
-  const hlUsd = hl.accounts.reduce((s, a) => s + a.accountValue, 0);
-  const v4 = data.aaveV4 ?? [];
-  const aaveNet = data.aave.reduce((s, a) => s + a.collateralUsd - a.debtUsd, 0) + v4.reduce((s, a) => s + a.suppliedUsd - a.debtUsd, 0);
-  const guardFor = (venue: string, match: (p: Record<string, any>) => boolean) => data.guards.find((g) => g.venue === venue && match(g.params));
-
-  const nothing =
-    data.errors.length === 0 && hl.positions.length === 0 && data.aave.length === 0 && v4.length === 0 && hlUsd === 0 && data.balances.every((b) => !b.error && (b.usdc ?? 0) === 0 && (b.eth ?? 0) === 0);
-  if (nothing)
-    return (
-      <div className="mx-auto w-full max-w-[560px] px-6 py-20 text-center">
-        <h1 className="text-xl font-semibold tracking-tight">You do not have any assets yet</h1>
-        <p className="mt-2 text-[14px] leading-relaxed text-dim">Top up your agent wallet to start. Send any token on an EVM chain to this address. Your positions show here after that.</p>
-        <div className="mt-5 select-all break-all rounded-xl border border-line bg-panel px-4 py-3 font-mono text-[13px]">{data.address}</div>
-      </div>
-    );
-
+/** A token or venue logo with a small chain logo at its corner. A missing logo shows the first letter. */
+function Logo({ src, label, chain }: { src: string | null; label: string; chain?: string | null }) {
+  const [broken, setBroken] = useState(false);
   return (
-    <div className="mx-auto w-full max-w-[980px] px-6 py-7">
-      <div className="mb-5 flex items-end justify-between">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Positions</h1>
-          <p className="mt-1 text-[13px] text-dim">Everything the agent wallet holds, read from the chains. Updated {new Date(data.asOf).toLocaleTimeString()}.</p>
-        </div>
-        <button onClick={() => refetch()} className="flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-[13px] text-dim hover:text-ink">
-          <RefreshCw className={`size-3.5 ${isFetching ? "animate-spin" : ""}`} /> Refresh
-        </button>
-      </div>
-
-      {data.errors.length > 0 && (
-        <div className="mb-4 flex gap-2 rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-[13px] text-warn">
-          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-          <div>Some sources did not answer. The view can be incomplete: {data.errors.join("; ")}</div>
-        </div>
+    <span className="relative size-8 shrink-0">
+      {src && !broken ? (
+        <img src={src} alt="" onError={() => setBroken(true)} className="size-8 rounded-full bg-raised object-cover" />
+      ) : (
+        <span className="grid size-8 place-items-center rounded-full bg-raised text-[12px] font-bold text-dim">{label.slice(0, 1)}</span>
       )}
+      {chain && <img src={chain} alt="" className="absolute -bottom-0.5 -right-0.5 size-3.5 rounded-full border border-panel bg-panel" />}
+    </span>
+  );
+}
 
-      <div className="mb-6 grid grid-cols-3 gap-3">
-        <Stat label="Wallet USDC" value={usd(walletUsd)} />
-        <Stat label="Hyperliquid account value" value={usd(hlUsd)} />
-        <Stat label="Aave net value" value={usd(aaveNet)} />
+function Row({ logo, title, sub, value, valueSub, valueClass = "" }: { logo: React.ReactNode; title: React.ReactNode; sub?: React.ReactNode; value: React.ReactNode; valueSub?: React.ReactNode; valueClass?: string }) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-2.5">
+      {logo}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 truncate text-[13.5px] font-semibold">{title}</div>
+        {sub && <div className="truncate text-[11.5px] text-faint">{sub}</div>}
       </div>
-
-      <Block title="Hyperliquid perps" empty={hl.positions.length === 0 ? "No open perp position." : null}>
-        <Table head={["Market", "Side", "Size", "Value", "Entry", "Mark", "Liq. price", "To liq.", "PnL", "Guard"]}>
-          {hl.positions.map((p) => {
-            const g = guardFor("hyperliquid", (x) => x.coin === p.coin);
-            const near = p.distanceToLiquidation !== null && p.distanceToLiquidation < 0.08;
-            return (
-              <tr key={p.coin}>
-                <td className="font-medium">{p.coin}</td>
-                <td className={p.size > 0 ? "text-good" : "text-bad"}>{p.size > 0 ? "Long" : "Short"} {p.leverage}x</td>
-                <td>{n(Math.abs(p.size), 5)}</td>
-                <td>{usd(p.positionValue)}</td>
-                <td>{n(p.entryPx)}</td>
-                <td>{n(p.markPx)}</td>
-                <td>{n(p.liquidationPx)}</td>
-                <td className={near ? "text-warn" : ""}>{p.distanceToLiquidation === null ? "—" : `${(p.distanceToLiquidation * 100).toFixed(1)}%`}</td>
-                <td className={p.unrealizedPnl >= 0 ? "text-good" : "text-bad"}>{usd(p.unrealizedPnl)}</td>
-                <td>{g ? <GuardTag text={`acts at ${g.params.triggerDistancePct}%`} /> : <span className="text-faint">None</span>}</td>
-              </tr>
-            );
-          })}
-        </Table>
-      </Block>
-
-      <Block title="Aave v3" empty={data.aave.length === 0 ? "No Aave position." : null}>
-        <Table head={["Chain", "Collateral", "Debt", "LTV now", "Liq. threshold", "Health factor", "Guard"]}>
-          {data.aave.map((a) => {
-            const g = guardFor("aave", (x) => x.chain === a.chainKey);
-            const hf = a.healthFactor;
-            return (
-              <tr key={a.chain}>
-                <td className="font-medium">{a.chain}</td>
-                <td>{usd(a.collateralUsd)}</td>
-                <td>{usd(a.debtUsd)}</td>
-                <td>{a.collateralUsd > 0 ? `${((a.debtUsd / a.collateralUsd) * 100).toFixed(1)}%` : "—"}</td>
-                <td>{(a.liquidationThreshold * 100).toFixed(0)}%</td>
-                <td className={hf !== null && hf < 1.25 ? "text-warn" : hf !== null ? "text-good" : ""}>{hf === null ? "No debt" : n(hf, 3)}</td>
-                <td>{g ? <GuardTag text={`acts below ${g.params.healthFactorThreshold}`} /> : <span className="text-faint">None</span>}</td>
-              </tr>
-            );
-          })}
-        </Table>
-      </Block>
-
-      {v4.length > 0 && (
-        <Block title="Aave v4" empty={null}>
-          <Table head={["Chain", "Spoke", "Supplied", "Debt", "LTV now", "Health factor", "Net APY"]}>
-            {v4.map((a) => (
-              <tr key={`${a.chain}-${a.spoke}`}>
-                <td className="font-medium">{a.chain}</td>
-                <td>{a.spoke}</td>
-                <td>{usd(a.suppliedUsd)}</td>
-                <td>{usd(a.debtUsd)}</td>
-                <td>{a.collateralUsd > 0 ? `${((a.debtUsd / a.collateralUsd) * 100).toFixed(1)}%` : "—"}</td>
-                <td className={a.healthFactor !== null && a.healthFactor < 1.25 ? "text-warn" : a.healthFactor !== null ? "text-good" : ""}>{a.healthFactor === null ? "No debt" : n(a.healthFactor, 3)}</td>
-                <td>{a.netApyPct.toFixed(2)}%</td>
-              </tr>
-            ))}
-          </Table>
-        </Block>
-      )}
-
-      <Block title="Hyperliquid balances" empty={hl.accounts.length === 0 ? "No Hyperliquid balance." : null}>
-        <Table head={["Dex", "Account value", "Margin used", "Free"]}>
-          {hl.accounts.map((a) => (
-            <tr key={a.dex}>
-              <td className="font-medium">{a.dex}</td>
-              <td>{usd(a.accountValue)}</td>
-              <td>{usd(a.marginUsed)}</td>
-              <td>{usd(a.withdrawable)}</td>
-            </tr>
-          ))}
-        </Table>
-      </Block>
-
-      <Block title="Wallet balances" empty={null}>
-        <Table head={["Chain", "USDC", "ETH (gas)"]}>
-          {data.balances.map((b) => (
-            <tr key={b.chain}>
-              <td className="font-medium">{b.chainName}</td>
-              <td>{b.error ? <span className="text-warn">not read</span> : n(b.usdc)}</td>
-              <td>{b.error ? <span className="text-warn">not read</span> : n(b.eth, 5)}</td>
-            </tr>
-          ))}
-        </Table>
-      </Block>
+      <div className="shrink-0 text-right">
+        <div className={`font-mono text-[13px] tabular-nums ${valueClass}`}>{value}</div>
+        {valueSub && <div className="font-mono text-[11px] tabular-nums text-faint">{valueSub}</div>}
+      </div>
     </div>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Card({ title, right, children }: { title: string; right?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-line bg-panel px-4 py-3">
-      <div className="text-[12px] text-dim">{label}</div>
-      <div className="mt-1 font-mono text-lg tabular-nums">{value}</div>
-    </div>
-  );
-}
-
-function Block({ title, empty, children }: { title: string; empty: string | null; children: React.ReactNode }) {
-  return (
-    <section className="mb-6">
-      <h2 className="mb-2 text-[12px] font-medium uppercase tracking-wider text-faint">{title}</h2>
-      {empty ? <div className="rounded-xl border border-line bg-panel px-4 py-4 text-[13px] text-faint">{empty}</div> : children}
+    <section className="mb-5">
+      <div className="mb-2 flex items-baseline justify-between px-1">
+        <h2 className="text-[12px] font-medium uppercase tracking-wider text-faint">{title}</h2>
+        {right && <span className="font-mono text-[12px] tabular-nums text-dim">{right}</span>}
+      </div>
+      <div className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-panel">{children}</div>
     </section>
   );
 }
 
-function Table({ head, children }: { head: string[]; children: React.ReactNode }) {
-  return (
-    <div className="overflow-x-auto rounded-xl border border-line bg-panel">
-      <table className="w-full text-[13px] tabular-nums [&_td]:whitespace-nowrap [&_td]:border-t [&_td]:border-line [&_td]:px-4 [&_td]:py-2.5 [&_td:not(:first-child)]:font-mono [&_td:not(:first-child)]:text-[12.5px]">
-        <thead>
-          <tr>
-            {head.map((h) => (
-              <th key={h} className="whitespace-nowrap px-4 py-2 text-left text-[12px] font-medium text-dim">{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>{children}</tbody>
-      </table>
-    </div>
-  );
-}
+const Pill = ({ children, tone }: { children: React.ReactNode; tone: "good" | "bad" | "warn" | "dim" }) => (
+  <span className={`rounded-md px-1.5 py-px text-[10.5px] font-semibold ${{ good: "bg-good/15 text-good", bad: "bg-bad/15 text-bad", warn: "bg-warn/15 text-warn", dim: "bg-raised text-dim" }[tone]}`}>{children}</span>
+);
 
-function GuardTag({ text }: { text: string }) {
+const hfTone = (hf: number | null) => (hf === null ? "dim" : hf < 1.25 ? "warn" : "good");
+
+export function PositionsView() {
+  const { data, isLoading, isFetching, refetch, error } = useQuery({ queryKey: ["positions"], queryFn: () => api<Positions>("/positions"), refetchInterval: 15_000 });
+
+  if (isLoading) return <p className="p-8 text-sm text-faint">Reading your account from the chains…</p>;
+  if (error || !data) return <p className="p-8 text-sm text-bad">{(error as Error)?.message ?? "Could not load the account."}</p>;
+
+  const hl = data.hyperliquid;
+  const v4 = data.aaveV4 ?? [];
+  const assets = data.assets ?? [];
+  const solTokens = (data.solana?.tokens ?? []).filter((t) => (t.usd ?? 0) >= 0.01);
+  const walletUsd = assets.reduce((s, a) => s + (a.usd ?? 0), 0) + solTokens.reduce((s, t) => s + (t.usd ?? 0), 0);
+  const hlUsd = hl.accounts.reduce((s, a) => s + a.accountValue, 0);
+  const aaveNet = data.aave.reduce((s, a) => s + a.collateralUsd - a.debtUsd, 0) + v4.reduce((s, a) => s + a.suppliedUsd - a.debtUsd, 0);
+  const total = walletUsd + hlUsd + aaveNet;
+  const guarded = (venue: string, match: (p: Record<string, any>) => boolean) => data.guards.some((g) => g.venue === venue && match(g.params));
+  const positionCount = hl.positions.length + data.aave.length + v4.length;
+
   return (
-    <span className="inline-flex items-center gap-1 text-good">
-      <ShieldCheck className="size-3.5" /> {text}
-    </span>
+    <div className="mx-auto w-full max-w-[720px] px-4 py-7 sm:px-6">
+      <div className="mb-6 flex items-end justify-between gap-3">
+        <div>
+          <p className="text-[12px] font-medium uppercase tracking-wider text-faint">Total value</p>
+          <p className="mt-1 font-mono text-3xl font-bold tabular-nums tracking-tight">{usd(total)}</p>
+          <div className="mt-2 flex flex-wrap gap-3 text-[12px] text-dim">
+            <span className="flex items-center gap-1.5"><img src="/icons/eth.png" alt="" className="size-3.5 rounded-full" /> Wallet {usd(walletUsd)}</span>
+            <span className="flex items-center gap-1.5"><img src="/icons/hyperliquid.webp" alt="" className="size-3.5 rounded-full" /> Hyperliquid {usd(hlUsd)}</span>
+            {aaveNet !== 0 && <span className="flex items-center gap-1.5"><img src="/icons/aave.webp" alt="" className="size-3.5 rounded-full" /> Aave {usd(aaveNet)}</span>}
+          </div>
+        </div>
+        <button onClick={() => refetch()} title="Refresh" aria-label="Refresh" className="grid size-9 place-items-center rounded-lg border border-line text-dim hover:text-ink">
+          <RefreshCw className={`size-3.5 ${isFetching ? "animate-spin" : ""}`} />
+        </button>
+      </div>
+
+      {(data.errors.length > 0 || data.assets === null) && (
+        <div className="mb-4 flex gap-2 rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-[12.5px] text-warn">
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+          <div>Some sources did not answer, so this view can be incomplete. {[...data.errors, ...(data.assets === null ? ["wallet tokens"] : [])].join("; ")}</div>
+        </div>
+      )}
+
+      <Card title="Positions" right={positionCount ? `${positionCount} open` : undefined}>
+        {positionCount === 0 && <p className="px-4 py-3.5 text-[13px] text-faint">No open position. Ask the agent to open one.</p>}
+        {hl.positions.map((p) => {
+          const long = p.size > 0;
+          const near = p.distanceToLiquidation !== null && p.distanceToLiquidation < 0.08;
+          return (
+            <Row
+              key={`${p.dex}-${p.coin}`}
+              logo={<Logo src="/icons/hyperliquid.webp" label="H" />}
+              title={<>{p.coin} <Pill tone={long ? "good" : "bad"}>{long ? "Long" : "Short"} {p.leverage}x</Pill>{guarded("hyperliquid", (x) => x.coin === p.coin) && <ShieldCheck className="size-3.5 text-good" />}</>}
+              sub={<>Entry {n(p.entryPx)} · Liq {n(p.liquidationPx)}{p.distanceToLiquidation !== null && <span className={near ? "text-warn" : ""}> ({(p.distanceToLiquidation * 100).toFixed(0)}% away)</span>}</>}
+              value={`${p.unrealizedPnl >= 0 ? "+" : ""}${usd(p.unrealizedPnl)}`}
+              valueClass={p.unrealizedPnl >= 0 ? "text-good" : "text-bad"}
+              valueSub={usd(p.positionValue)}
+            />
+          );
+        })}
+        {data.aave.map((a) => (
+          <Row
+            key={`v3-${a.chain}`}
+            logo={<Logo src="/icons/aave.webp" label="A" chain={CHAIN_LOGO[CHAIN_ID[a.chainKey] ?? -1] ?? null} />}
+            title={<>Aave v3 <span className="font-normal text-faint">{a.chain}</span>{guarded("aave", (x) => x.chain === a.chainKey) && <ShieldCheck className="size-3.5 text-good" />}</>}
+            sub={`Supplied ${usd(a.collateralUsd)} · Debt ${usd(a.debtUsd)}`}
+            value={<Pill tone={hfTone(a.healthFactor)}>{a.healthFactor === null ? "No debt" : `HF ${n(a.healthFactor, 2)}`}</Pill>}
+            valueSub={usd(a.collateralUsd - a.debtUsd)}
+          />
+        ))}
+        {v4.map((a) => (
+          <Row
+            key={`v4-${a.chain}-${a.spoke}`}
+            logo={<Logo src="/icons/aave.webp" label="A" chain={CHAIN_LOGO[CHAIN_ID[a.chain.toLowerCase()] ?? -1] ?? null} />}
+            title={<>Aave v4 <span className="font-normal text-faint">{a.spoke}</span></>}
+            sub={`Supplied ${usd(a.suppliedUsd)} · Debt ${usd(a.debtUsd)} · ${a.netApyPct.toFixed(2)}% APY`}
+            value={<Pill tone={hfTone(a.healthFactor)}>{a.healthFactor === null ? "No debt" : `HF ${n(a.healthFactor, 2)}`}</Pill>}
+            valueSub={usd(a.suppliedUsd - a.debtUsd)}
+          />
+        ))}
+        {hl.accounts.filter((a) => a.accountValue >= 0.01).map((a) => (
+          <Row
+            key={`hl-${a.dex}`}
+            logo={<Logo src="/icons/hyperliquid.webp" label="H" />}
+            title={<>Hyperliquid <span className="font-normal text-faint">{a.dex === "core" ? "account" : a.dex}</span></>}
+            sub={`Free ${usd(a.withdrawable)} · In use ${usd(a.marginUsed)}`}
+            value={usd(a.accountValue)}
+          />
+        ))}
+      </Card>
+
+      <Card title="Wallet" right={usd(walletUsd)}>
+        {assets.length === 0 && solTokens.length === 0 && (
+          <p className="px-4 py-3.5 text-[13px] text-faint">No tokens yet. Send any token to <span className="select-all font-mono text-dim">{short(data.address)}</span> on any EVM chain.</p>
+        )}
+        {assets.map((a) => (
+          <Row
+            key={`${a.chainId}-${a.token}`}
+            logo={<Logo src={a.logo} label={a.symbol} chain={CHAIN_LOGO[a.chainId] ?? a.chainLogo} />}
+            title={a.symbol}
+            sub={a.chainName}
+            value={a.usd === null ? "—" : usd(a.usd)}
+            valueSub={n(a.amount, a.amount < 1 ? 6 : 4)}
+          />
+        ))}
+        {solTokens.map((t) => (
+          <Row
+            key={`sol-${t.mint}`}
+            logo={<Logo src={t.symbol === "SOL" ? "/icons/chain-solana.svg" : t.logo} label={t.symbol} chain={t.symbol === "SOL" ? null : CHAIN_LOGO[0]} />}
+            title={t.symbol}
+            sub="Solana"
+            value={t.usd === null ? "—" : usd(t.usd)}
+            valueSub={n(t.amount, t.amount < 1 ? 6 : 4)}
+          />
+        ))}
+      </Card>
+    </div>
   );
 }
