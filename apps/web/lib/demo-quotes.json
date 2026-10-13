@@ -1,0 +1,73 @@
+{
+  "fetchedAt": "2026-10-13T05:41:08.200Z",
+  "coins": {
+    "BTC": {
+      "price": 83568.5,
+      "maxLeverage": 40
+    },
+    "ETH": {
+      "price": 2524.65,
+      "maxLeverage": 25
+    },
+    "SOL": {
+      "price": 108.095,
+      "maxLeverage": 20
+    },
+    "HYPE": {
+      "price": 82.8065,
+      "maxLeverage": 10
+    }
+  },
+  "stocks": {
+    "TSLA": {
+      "price": 378.03
+    },
+    "AAPL": {
+      "price": 340.97
+    },
+    "NVDA": {
+      "price": 226.32
+    },
+    "GOOGL": {
+      "price": 352.72
+    },
+    "META": {
+      "price": 742.96
+    },
+    "NFLX": {
+      "price": 70.61
+    },
+    "COIN": {
+      "price": 180.39
+    }
+  },
+  "lending": {
+    "ETH": {
+      "apy": 1.33
+    },
+    "USDC": {
+      "apy": 4.14
+    },
+    "USDT": {
+      "apy": 3.47
+    },
+    "DAI": {
+      "apy": 3.44
+    },
+    "BTC": {
+      "apy": 0
+    }
+  },
+  "predictions": {
+    "spain": 0.17,
+    "france": 0.15,
+    "brazil": 0.09,
+    "argentina": 0.12,
+    "germany": 0.08,
+    "england": 0.13,
+    "portugal": 0.07,
+    "usa": 0.03,
+    "italy": 0.05,
+    "netherlands": 0.05
+  }
+}

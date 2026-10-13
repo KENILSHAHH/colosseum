@@ -2,19 +2,13 @@
 
 import { ArrowUp, Check } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import quotes from "@/lib/demo-quotes.json";
 
-/** The demo chat has no server. It reads the words of the user and shows a card for each action, as if the order was filled. */
+/** The tab has no server. It reads the words of the user and shows a card for each action, as if the order was filled. The prices come from lib/demo-quotes.json (see scripts/fetch-demo-quotes.mjs). */
 
 interface Logo { label: string; src?: string; tile?: boolean; fill?: boolean }
 interface DemoCard { logos: Logo[]; venue: Logo; title: string; note?: string; facts: [string, string][] }
 interface Entry { role: "user" | "assistant"; text?: string; cards?: DemoCard[]; pending?: boolean }
-
-const PROMPTS = [
-  "Buy 5 TSLA shares on Robinhood",
-  "Open a 40x long with 0.01 BTC on Hyperliquid",
-  "Lend 1 ETH on Aave",
-  "Buy yes on Spain winning the next FIFA on World",
-];
 
 const VENUES = {
   robinhood: { label: "Robinhood", src: "/icons/robinhood.svg", tile: true },
@@ -23,49 +17,55 @@ const VENUES = {
   world: { label: "World", src: "/icons/world.svg" },
 } satisfies Record<string, Logo>;
 
-const TOKENS: Record<string, { logo: Logo; price: number; apy: number }> = {
-  BTC: { logo: { label: "Bitcoin", src: "/icons/btc.png" }, price: 98_400, apy: 0.1 },
-  ETH: { logo: { label: "Ethereum", src: "/icons/eth.png" }, price: 3_900, apy: 1.9 },
-  SOL: { logo: { label: "Solana", src: "/icons/chain-solana.svg" }, price: 210, apy: 3.2 },
-  HYPE: { logo: { label: "Hyperliquid", src: "/icons/hyperliquid.webp" }, price: 42, apy: 0 },
-  USDC: { logo: { label: "USDC", src: "/icons/usdc.png" }, price: 1, apy: 4.8 },
-  USDT: { logo: { label: "USDT", src: "/icons/usdt.png" }, price: 1, apy: 4.3 },
-  DAI: { logo: { label: "DAI", src: "/icons/dai.png" }, price: 1, apy: 4.1 },
+const TOKENS: Record<string, Logo> = {
+  BTC: { label: "Bitcoin", src: "/icons/btc.png" },
+  ETH: { label: "Ethereum", src: "/icons/eth.png" },
+  SOL: { label: "Solana", src: "/icons/chain-solana.svg" },
+  HYPE: { label: "Hyperliquid", src: "/icons/hyperliquid.webp" },
+  USDC: { label: "USDC", src: "/icons/usdc.png" },
+  USDT: { label: "USDT", src: "/icons/usdt.png" },
+  DAI: { label: "DAI", src: "/icons/dai.png" },
+};
+const COINS: Record<string, { price: number; maxLeverage: number }> = quotes.coins;
+const STABLES = ["USDC", "USDT", "DAI"];
+const LENDING: Record<string, { apy: number }> = quotes.lending;
+const STOCK_PRICES: Record<string, { price: number }> = quotes.stocks;
+const PREDICTIONS: Record<string, number> = quotes.predictions;
+
+const STOCKS: Record<string, { name: string; logo: Logo }> = {
+  TSLA: { name: "tesla", logo: { label: "Tesla", src: "/icons/tesla.svg", tile: true } },
+  AAPL: { name: "apple", logo: { label: "Apple", src: "/icons/apple.svg", tile: true } },
+  NVDA: { name: "nvidia", logo: { label: "Nvidia", src: "/icons/nvidia.svg", tile: true } },
+  GOOGL: { name: "google", logo: { label: "Google", src: "/icons/google.svg", tile: true } },
+  META: { name: "meta", logo: { label: "Meta", src: "/icons/meta.svg", tile: true } },
+  NFLX: { name: "netflix", logo: { label: "Netflix", src: "/icons/netflix.svg", tile: true } },
+  COIN: { name: "coinbase", logo: { label: "Coinbase", src: "/icons/coinbase.svg", tile: true } },
 };
 
-const STOCKS: Record<string, { name: string; logo: Logo; price: number }> = {
-  TSLA: { name: "tesla", logo: { label: "Tesla", src: "/icons/tesla.svg", tile: true }, price: 248.5 },
-  AAPL: { name: "apple", logo: { label: "Apple", src: "/icons/apple.svg", tile: true }, price: 231.2 },
-  NVDA: { name: "nvidia", logo: { label: "Nvidia", src: "/icons/nvidia.svg", tile: true }, price: 188.4 },
-  GOOGL: { name: "google", logo: { label: "Google", src: "/icons/google.svg", tile: true }, price: 176.9 },
-  META: { name: "meta", logo: { label: "Meta", src: "/icons/meta.svg", tile: true }, price: 612.3 },
-  NFLX: { name: "netflix", logo: { label: "Netflix", src: "/icons/netflix.svg", tile: true }, price: 1_180 },
-  COIN: { name: "coinbase", logo: { label: "Coinbase", src: "/icons/coinbase.svg", tile: true }, price: 295.6 },
-};
-
-const COUNTRIES: Record<string, { name: string; code: string; price: number }> = {
-  spain: { name: "Spain", code: "es", price: 0.17 },
-  france: { name: "France", code: "fr", price: 0.15 },
-  brazil: { name: "Brazil", code: "br", price: 0.09 },
-  argentina: { name: "Argentina", code: "ar", price: 0.12 },
-  germany: { name: "Germany", code: "de", price: 0.08 },
-  england: { name: "England", code: "gb-eng", price: 0.13 },
-  portugal: { name: "Portugal", code: "pt", price: 0.07 },
-  usa: { name: "USA", code: "us", price: 0.03 },
-  italy: { name: "Italy", code: "it", price: 0.05 },
-  netherlands: { name: "Netherlands", code: "nl", price: 0.05 },
+const COUNTRIES: Record<string, { name: string; code: string }> = {
+  spain: { name: "Spain", code: "es" },
+  france: { name: "France", code: "fr" },
+  brazil: { name: "Brazil", code: "br" },
+  argentina: { name: "Argentina", code: "ar" },
+  germany: { name: "Germany", code: "de" },
+  england: { name: "England", code: "gb-eng" },
+  portugal: { name: "Portugal", code: "pt" },
+  usa: { name: "USA", code: "us" },
+  italy: { name: "Italy", code: "it" },
+  netherlands: { name: "Netherlands", code: "nl" },
 };
 
 const money = (v: number, d = 2) => `$${v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d })}`;
 const amount = (v: number) => v.toLocaleString("en-US", { maximumFractionDigits: 6 });
 const has = (text: string, re: RegExp) => re.test(text);
 
-function token(text: string): [string, (typeof TOKENS)[string]] | null {
-  const hit = Object.entries(TOKENS).find(([symbol]) => has(text, new RegExp(`\\b${symbol}\\b`, "i")));
-  return hit ?? null;
+function token(text: string): [string, Logo] | null {
+  return Object.entries(TOKENS).find(([symbol]) => has(text, new RegExp(`\\b${symbol}\\b`, "i"))) ?? null;
 }
 
-/** One action in, one card out. It returns null when the words are not an action that the demo knows. */
+const priceOf = (symbol: string) => COINS[symbol]?.price ?? (STABLES.includes(symbol) ? 1 : null);
+
+/** One action in, one card out. It returns null when the words are not an action that the tab knows. */
 function toCard(raw: string): DemoCard | null {
   const text = raw.toLowerCase();
   const number = (re: RegExp) => { const m = text.match(re); return m ? Number(m[1]) : null; };
@@ -73,31 +73,31 @@ function toCard(raw: string): DemoCard | null {
   // Prediction market on World.
   if (has(text, /\b(world|fifa|predict|bet|winning|wins?)\b/) && !has(text, /\b(robinhood|hyperliquid|aave)\b/)) {
     const side = has(text, /\bno\b/) && !has(text, /\byes\b/) ? "NO" : "YES";
-    const country = Object.entries(COUNTRIES).find(([key]) => has(text, new RegExp(`\\b${key}\\b`)))?.[1];
-    const fifa = has(text, /fifa|world cup/);
-    if (!country && !fifa) return null;
+    const hit = Object.entries(COUNTRIES).find(([key]) => has(text, new RegExp(`\\b${key}\\b`)));
+    const yes = hit ? PREDICTIONS[hit[0]] : undefined;
+    if (!hit || !yes) return null;
+    const country = hit[1];
+    const price = side === "YES" ? yes : 1 - yes;
     const cost = number(/\$\s*(\d+(?:\.\d+)?)/) ?? 10;
-    const price = country?.price ?? 0.5;
-    const logos: Logo[] = [];
-    if (country) logos.push({ label: country.name, src: `/icons/flag-${country.code}.png`, fill: true });
-    if (fifa) logos.push({ label: "FIFA", src: "/icons/fifa.svg", tile: true });
+    const logos: Logo[] = [{ label: country.name, src: `/icons/flag-${country.code}.png`, fill: true }];
+    if (has(text, /fifa|world cup/)) logos.push({ label: "FIFA", src: "/icons/fifa.svg", tile: true });
     return {
       logos,
       venue: VENUES.world,
-      title: `Bought ${side}${country ? ` · ${country.name}` : ""}`,
-      note: fifa ? "FIFA World Cup 2030" : undefined,
+      title: `Bought ${side} · ${country.name}`,
+      note: "FIFA World Cup 2030",
       facts: [["Price", `${Math.round(price * 100)}¢`], ["Shares", amount(Math.round((cost / price) * 10) / 10)], ["Cost", money(cost)]],
     };
   }
 
   // Stock on Robinhood.
   const stock = Object.entries(STOCKS).find(([symbol, s]) => has(text, new RegExp(`\\b(${symbol.toLowerCase()}|${s.name})\\b`)));
-  if (stock || has(text, /\b(robinhood|shares?|stocks?)\b/)) {
+  if (stock) {
+    const [symbol, info] = stock;
     const qty = number(/(\d+(?:\.\d+)?)/) ?? 1;
-    const [symbol, info] = stock ?? [(text.match(/\d+(?:\.\d+)?\s+([a-z]{1,5})\s+shares?/)?.[1] ?? "AAPL").toUpperCase(), undefined];
-    const price = info?.price ?? 100;
+    const price = STOCK_PRICES[symbol]!.price;
     return {
-      logos: [info?.logo ?? { label: symbol }],
+      logos: [info.logo],
       venue: VENUES.robinhood,
       title: `Bought ${amount(qty)} ${symbol}`,
       facts: [["Price", money(price)], ["Total", money(qty * price)]],
@@ -108,40 +108,49 @@ function toCard(raw: string): DemoCard | null {
   const leverage = number(/(\d+)\s*x\b/);
   const side = text.match(/\b(long|short)\b/)?.[1];
   if (leverage || side) {
-    const [symbol, info] = token(text) ?? ["BTC", TOKENS.BTC!];
+    const [symbol, logo] = token(text) ?? ["BTC", TOKENS.BTC!];
+    const coin = COINS[symbol];
+    if (!coin) return null;
     const size = number(new RegExp(`(\\d*\\.?\\d+)\\s*${symbol}\\b`, "i")) ?? 0.01;
-    const lev = leverage ?? 10;
-    const notional = size * info.price;
+    const lev = Math.min(leverage ?? 10, coin.maxLeverage);
     const long = side !== "short";
+    // The liquidation price follows the Hyperliquid rule for isolated margin: the maintenance margin is half of the margin at maximum leverage.
+    const mm = 1 / (2 * coin.maxLeverage);
+    const liq = long ? coin.price * (1 - 1 / (lev * (1 - mm))) : coin.price * (1 + 1 / (lev * (1 + mm)));
     return {
-      logos: [info.logo],
+      logos: [logo],
       venue: VENUES.hyperliquid,
       title: `${long ? "Long" : "Short"} ${lev}x · ${amount(size)} ${symbol}`,
-      facts: [["Entry", money(info.price, info.price < 100 ? 2 : 0)], ["Margin", money(notional / lev)], ["Liq.", money(info.price * (long ? 1 - 0.9 / lev : 1 + 0.9 / lev), info.price < 100 ? 2 : 0)]],
+      facts: [["Entry", money(coin.price)], ["Margin", money((size * coin.price) / lev)], ["Liq.", money(liq)]],
     };
   }
 
   // Lending on Aave.
   if (has(text, /\b(aave|lend|lent|lending|supply|supplied)\b/)) {
-    const [symbol, info] = token(text) ?? ["ETH", TOKENS.ETH!];
+    const [symbol, logo] = token(text) ?? ["ETH", TOKENS.ETH!];
+    const price = priceOf(symbol);
+    const rate = LENDING[symbol];
+    if (price === null || !rate) return null;
     const qty = number(/(\d+(?:\.\d+)?)/) ?? 1;
     return {
-      logos: [info.logo],
+      logos: [logo],
       venue: VENUES.aave,
       title: `Lent ${amount(qty)} ${symbol}`,
-      facts: [["APY", `${info.apy.toFixed(2)}%`], ["Value", money(qty * info.price)]],
+      facts: [["APY", `${rate.apy.toFixed(2)}%`], ["Value", money(qty * price)]],
     };
   }
 
   // Spot buy on Hyperliquid.
   if (has(text, /\bhyperliquid\b/)) {
-    const [symbol, info] = token(text) ?? ["ETH", TOKENS.ETH!];
+    const [symbol, logo] = token(text) ?? ["ETH", TOKENS.ETH!];
+    const price = priceOf(symbol);
+    if (price === null) return null;
     const qty = number(/(\d*\.?\d+)\s*[a-z]/) ?? 1;
     return {
-      logos: [info.logo],
+      logos: [logo],
       venue: VENUES.hyperliquid,
       title: `Bought ${amount(qty)} ${symbol}`,
-      facts: [["Price", money(info.price)], ["Total", money(qty * info.price)]],
+      facts: [["Price", money(price)], ["Total", money(qty * price)]],
     };
   }
   return null;
@@ -203,28 +212,20 @@ export function DemoChat({ active }: { active: boolean }) {
 
   const send = (text: string) => {
     const prompt = text.trim();
-    if (!prompt) return;
+    // One answer at a time, so that each answer lands under its own message.
+    if (!prompt || entries.at(-1)?.pending) return;
     setInput("");
     setEntries((e) => [...e, { role: "user", text: prompt }, { role: "assistant", pending: true }]);
-    // A short wait, so that the answer looks like the work of an agent.
+    // A short wait, so that the answer looks like the work of an agent. It is below two seconds.
     timers.current.push(
       window.setTimeout(() => {
         const cards = toCards(prompt);
-        setEntries((e) => [...e.slice(0, -1), cards.length ? { role: "assistant", cards } : { role: "assistant", text: "I did not find an action in your message. Try one of the examples below." }]);
-      }, 900),
+        setEntries((e) => [...e.slice(0, -1), cards.length ? { role: "assistant", cards } : { role: "assistant", text: "I did not find an action in your message." }]);
+      }, 1500),
     );
   };
 
   const empty = entries.length === 0;
-  const chips = (
-    <div className="mt-4 flex flex-wrap justify-center gap-2">
-      {PROMPTS.map((p) => (
-        <button key={p} onClick={() => send(p)} className="rounded-full border border-line px-3 py-1.5 text-[12.5px] text-dim hover:bg-raised hover:text-ink">
-          {p}
-        </button>
-      ))}
-    </div>
-  );
   const composer = (
     <>
       <form onSubmit={(e) => { e.preventDefault(); send(input); }} className="flex items-end gap-2 rounded-2xl border border-line bg-panel p-2 pl-4 focus-within:border-faint">
@@ -233,15 +234,13 @@ export function DemoChat({ active }: { active: boolean }) {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); } }}
           rows={1}
-          aria-label="Tell the demo agent what to do"
-          placeholder="Buy 5 TSLA shares on Robinhood"
+          aria-label="Ask or tell the agent what to do"
           className="block max-h-40 min-h-[40px] min-w-0 flex-1 resize-none bg-transparent py-2 text-[15px] outline-none [field-sizing:content] placeholder:text-faint"
         />
         <button type="submit" disabled={!input.trim()} className="grid size-9 place-items-center rounded-xl bg-accent text-white disabled:opacity-30" title="Send">
           <ArrowUp className="size-4" />
         </button>
       </form>
-      <p className="mt-2 px-1 text-center text-[12px] text-faint">Demo mode. The agent does not place real orders here.</p>
     </>
   );
 
@@ -253,7 +252,6 @@ export function DemoChat({ active }: { active: boolean }) {
             <div>
               <h1 className="mb-6 text-center text-[36px] font-bold leading-tight tracking-tight">What do you want to do on-chain?</h1>
               {composer}
-              {chips}
             </div>
           )}
           {entries.map((entry, i) =>
@@ -276,7 +274,7 @@ export function DemoChat({ active }: { active: boolean }) {
           <div ref={bottom} className="h-4" />
         </div>
       </div>
-      {!empty && <div className="mx-auto w-full max-w-[760px] px-6 pb-5">{composer}{entries.at(-1)?.text && chips}</div>}
+      {!empty && <div className="mx-auto w-full max-w-[760px] px-6 pb-5">{composer}</div>}
     </div>
   );
 }
