@@ -49,9 +49,9 @@
   --color-good: #4cc38a;
   --color-warn: #e5b454;
   --color-bad: #ef6f6c;
-  /* Heavier text everywhere. The font has Regular, Medium and Bold, so each step lands on the next file. */
-  --font-weight-normal: 500;
-  --font-weight-medium: 600;
+  /* Bold text everywhere. Every weight step uses the Bold file. */
+  --font-weight-normal: 700;
+  --font-weight-medium: 700;
   --font-weight-semibold: 700;
   --font-weight-bold: 700;
   --font-sans: "Coinbase Sans", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -64,7 +64,7 @@ body {
   background: var(--color-bg);
   color: var(--color-ink);
   font-family: var(--font-sans);
-  font-weight: 500;
+  font-weight: 700;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -139,7 +139,7 @@ body {
 .prose-agent h1,
 .prose-agent h2,
 .prose-agent h3 {
-  font-weight: 600;
+  font-weight: 700;
   margin-top: 1.2em;
 }
 .prose-agent h2 {
@@ -195,7 +195,7 @@ body {
 }
 .prose-agent th {
   text-align: left;
-  font-weight: 500;
+  font-weight: 700;
   color: var(--color-dim);
   background: var(--color-panel);
   white-space: nowrap;
