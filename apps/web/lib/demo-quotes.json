@@ -1,20 +1,20 @@
 {
-  "fetchedAt": "2026-10-13T05:41:08.200Z",
+  "fetchedAt": "2026-10-13T05:47:29.770Z",
   "coins": {
     "BTC": {
-      "price": 83568.5,
+      "price": 83565.5,
       "maxLeverage": 40
     },
     "ETH": {
-      "price": 2524.65,
+      "price": 2525.55,
       "maxLeverage": 25
     },
     "SOL": {
-      "price": 108.095,
+      "price": 108.085,
       "maxLeverage": 20
     },
     "HYPE": {
-      "price": 82.8065,
+      "price": 82.8605,
       "maxLeverage": 10
     }
   },
@@ -69,5 +69,15 @@
     "usa": 0.03,
     "italy": 0.05,
     "netherlands": 0.05
+  },
+  "updown": {
+    "5": {
+      "up": 0.51,
+      "down": 0.5
+    },
+    "15": {
+      "up": 0.48,
+      "down": 0.53
+    }
   }
 }

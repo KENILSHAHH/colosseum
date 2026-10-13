@@ -39,6 +39,18 @@ const lending = Object.fromEntries(
   Object.entries(LEND).map(([symbol, aaveSymbol]) => [symbol, { apy: Number(market.reserves.find((r) => r.underlyingToken.symbol === aaveSymbol).supplyInfo.apy.formatted) }]),
 );
 
-const out = { fetchedAt: new Date().toISOString(), coins, stocks, lending, predictions: PREDICTIONS };
+// The "Bitcoin Up or Down" markets of the current 5 and 15 minute windows. The price to buy Up is the best ask. The price to buy Down is one minus the best bid of Up.
+const updown = Object.fromEntries(
+  await Promise.all(
+    [5, 15].map(async (minutes) => {
+      const start = Math.floor(Date.now() / 1000 / (minutes * 60)) * minutes * 60;
+      const [event] = await json(`https://gamma-api.polymarket.com/events?slug=btc-updown-${minutes}m-${start}`);
+      const m = event.markets[0];
+      return [String(minutes), { up: Number(m.bestAsk), down: Number((1 - Number(m.bestBid)).toFixed(3)) }];
+    }),
+  ),
+);
+
+const out = { fetchedAt: new Date().toISOString(), coins, stocks, lending, predictions: PREDICTIONS, updown };
 writeFileSync(new URL("../lib/demo-quotes.json", import.meta.url), `${JSON.stringify(out, null, 2)}\n`);
 console.log(out);

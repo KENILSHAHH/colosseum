@@ -1,20 +1,24 @@
 "use client";
 
-import { ArrowUp, Check } from "lucide-react";
+import { ArrowUp, Check, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import quotes from "@/lib/demo-quotes.json";
 
 /** The tab has no server. It reads the words of the user and shows a card for each action, as if the order was filled. The prices come from lib/demo-quotes.json (see scripts/fetch-demo-quotes.mjs). */
 
 interface Logo { label: string; src?: string; tile?: boolean; fill?: boolean }
-interface DemoCard { logos: Logo[]; venue: Logo; title: string; note?: string; facts: [string, string][] }
-interface Entry { role: "user" | "assistant"; text?: string; cards?: DemoCard[]; pending?: boolean }
+interface DemoCard { logos: Logo[]; venue: Logo; title: string; note?: string; steps: string[]; facts: [string, string][] }
+// "done" is the number of finished steps. The step after it is the one that runs.
+interface Entry { role: "user" | "assistant"; text?: string; cards?: DemoCard[]; steps?: string[]; done?: number; pending?: boolean }
+
+/** The steps run for about two seconds. The card shows after the last step. */
+const STEPS_MS = 2000;
 
 const VENUES = {
   robinhood: { label: "Robinhood", src: "/icons/robinhood.svg", tile: true },
   hyperliquid: { label: "Hyperliquid", src: "/icons/hyperliquid.webp" },
   aave: { label: "Aave", src: "/icons/aave.webp" },
-  world: { label: "World", src: "/icons/world.svg" },
+  world: { label: "World", src: "/icons/world.png" },
 } satisfies Record<string, Logo>;
 
 const TOKENS: Record<string, Logo> = {
@@ -70,6 +74,26 @@ function toCard(raw: string): DemoCard | null {
   const text = raw.toLowerCase();
   const number = (re: RegExp) => { const m = text.match(re); return m ? Number(m[1]) : null; };
 
+  // "Bitcoin Up or Down" on World, for a window of 5 or 15 minutes. The window is the one that runs now.
+  const minutes = number(/(\d+)\s*(?:min|minutes?)\b/);
+  const market = minutes ? (quotes.updown as Record<string, { up: number; down: number }>)[String(minutes)] : undefined;
+  if (market && minutes && has(text, /\b(btc|bitcoin)\b/) && has(text, /\b(up|down)\b/)) {
+    const side = has(text, /\bdown\b/) && !has(text, /\bup\b/) ? "Down" : "Up";
+    const price = side === "Up" ? market.up : market.down;
+    const shares = number(/(\d+(?:\.\d+)?)\s*shares?\b/) ?? 1;
+    const start = Math.floor(Date.now() / (minutes * 60_000)) * minutes * 60_000;
+    const clock = (t: number) => new Date(t).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" }).replace(" AM", "").replace(" PM", "");
+    const zone = new Date(start).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric" }).slice(-2);
+    return {
+      logos: [TOKENS.BTC!],
+      venue: VENUES.world,
+      title: `Bought ${side.toUpperCase()} · BTC`,
+      note: `${minutes} min · ${clock(start)}–${clock(start + minutes * 60_000)} ${zone} ET`,
+      steps: ["Reading the World market", `Getting the BTC ${side} price`, `Buying ${amount(shares)} ${side.toUpperCase()} ${shares === 1 ? "share" : "shares"}`, "Order filled"],
+      facts: [["Price", `${Math.round(price * 100)}¢`], ["Shares", amount(shares)], ["Cost", money(shares * price)]],
+    };
+  }
+
   // Prediction market on World.
   if (has(text, /\b(world|fifa|predict|bet|winning|wins?)\b/) && !has(text, /\b(robinhood|hyperliquid|aave)\b/)) {
     const side = has(text, /\bno\b/) && !has(text, /\byes\b/) ? "NO" : "YES";
@@ -86,6 +110,7 @@ function toCard(raw: string): DemoCard | null {
       venue: VENUES.world,
       title: `Bought ${side} · ${country.name}`,
       note: "FIFA World Cup 2030",
+      steps: ["Reading the World market", `Getting the ${side} price for ${country.name}`, `Buying ${amount(Math.round((cost / price) * 10) / 10)} ${side} shares`, "Order filled"],
       facts: [["Price", `${Math.round(price * 100)}¢`], ["Shares", amount(Math.round((cost / price) * 10) / 10)], ["Cost", money(cost)]],
     };
   }
@@ -100,6 +125,7 @@ function toCard(raw: string): DemoCard | null {
       logos: [info.logo],
       venue: VENUES.robinhood,
       title: `Bought ${amount(qty)} ${symbol}`,
+      steps: ["Reading the Robinhood account", `Getting the ${symbol} price`, `Placing a market order for ${amount(qty)} ${symbol}`, "Order filled"],
       facts: [["Price", money(price)], ["Total", money(qty * price)]],
     };
   }
@@ -121,6 +147,7 @@ function toCard(raw: string): DemoCard | null {
       logos: [logo],
       venue: VENUES.hyperliquid,
       title: `${long ? "Long" : "Short"} ${lev}x · ${amount(size)} ${symbol}`,
+      steps: ["Reading the Hyperliquid account", `Setting ${lev}x leverage on ${symbol}`, `Opening a ${long ? "long" : "short"} of ${amount(size)} ${symbol}`, "Order filled"],
       facts: [["Entry", money(coin.price)], ["Margin", money((size * coin.price) / lev)], ["Liq.", money(liq)]],
     };
   }
@@ -136,6 +163,7 @@ function toCard(raw: string): DemoCard | null {
       logos: [logo],
       venue: VENUES.aave,
       title: `Lent ${amount(qty)} ${symbol}`,
+      steps: ["Reading the Aave market", `Approving ${symbol}`, `Supplying ${amount(qty)} ${symbol}`, "Supply confirmed"],
       facts: [["APY", `${rate.apy.toFixed(2)}%`], ["Value", money(qty * price)]],
     };
   }
@@ -150,6 +178,7 @@ function toCard(raw: string): DemoCard | null {
       logos: [logo],
       venue: VENUES.hyperliquid,
       title: `Bought ${amount(qty)} ${symbol}`,
+      steps: ["Reading the Hyperliquid account", `Getting the ${symbol} price`, `Buying ${amount(qty)} ${symbol}`, "Order filled"],
       facts: [["Price", money(price)], ["Total", money(qty * price)]],
     };
   }
@@ -215,14 +244,14 @@ export function DemoChat({ active }: { active: boolean }) {
     // One answer at a time, so that each answer lands under its own message.
     if (!prompt || entries.at(-1)?.pending) return;
     setInput("");
-    setEntries((e) => [...e, { role: "user", text: prompt }, { role: "assistant", pending: true }]);
-    // A short wait, so that the answer looks like the work of an agent. It is below two seconds.
-    timers.current.push(
-      window.setTimeout(() => {
-        const cards = toCards(prompt);
-        setEntries((e) => [...e.slice(0, -1), cards.length ? { role: "assistant", cards } : { role: "assistant", text: "I did not find an action in your message." }]);
-      }, 1500),
-    );
+    const cards = toCards(prompt);
+    // Several actions share the time. Each one gives its first steps, and the last step of the message is the fill.
+    const steps = cards.length === 1 ? cards[0]!.steps : cards.flatMap((c) => c.steps.slice(1, 3)).concat("Orders filled");
+    setEntries((e) => [...e, { role: "user", text: prompt }, { role: "assistant", pending: true, ...(cards.length ? { steps, done: 0 } : {}) }]);
+    const after = (ms: number, fn: () => void) => timers.current.push(window.setTimeout(fn, ms));
+    if (!cards.length) return after(800, () => setEntries((e) => [...e.slice(0, -1), { role: "assistant", text: "I did not find an action in your message." }]));
+    // A step ends every STEPS_MS / steps. The card shows when the last step ends.
+    steps.forEach((_, n) => after(((n + 1) * STEPS_MS) / steps.length, () => setEntries((e) => [...e.slice(0, -1), { role: "assistant", pending: n + 1 < steps.length, steps, done: n + 1, ...(n + 1 === steps.length ? { cards } : {}) }])));
   };
 
   const empty = entries.length === 0;
@@ -261,7 +290,17 @@ export function DemoChat({ active }: { active: boolean }) {
               </div>
             ) : (
               <div key={i} className="mb-8">
-                {entry.pending && (
+                {entry.steps && (
+                  <div className="mb-3 space-y-1.5">
+                    {entry.steps.slice(0, (entry.done ?? 0) + 1).map((step, n) => (
+                      <div key={n} className="step-in flex items-center gap-2 text-[13px] text-dim">
+                        {n < (entry.done ?? 0) ? <Check className="size-3.5 shrink-0 text-good" /> : <Loader2 className="size-3.5 shrink-0 animate-spin text-accent" />}
+                        <span>{step}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {entry.pending && !entry.steps && (
                   <div className="flex gap-1 py-2">
                     {[0, 1, 2].map((d) => <span key={d} className="dot size-1.5 rounded-full bg-dim" style={{ animationDelay: `${d * 0.18}s` }} />)}
                   </div>
