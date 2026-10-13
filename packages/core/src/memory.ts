@@ -4,7 +4,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
-import { config } from "./config";
+import { config, workspaceHeader } from "./config";
 import { sql } from "./db";
 
 export interface Lesson { id: number; scope: "global" | "user"; topic: string; lesson: string; createdAt: string }
@@ -81,7 +81,7 @@ export async function reflectOnChat(userId: string, chat: ChatRecord): Promise<n
   const key = config().ANTHROPIC_API_KEY;
   if (!key) return 0;
   const existing = await recallLessons(userId);
-  const client = new Anthropic({ apiKey: key, timeout: 60_000, maxRetries: 1 });
+  const client = new Anthropic({ apiKey: key, timeout: 60_000, maxRetries: 1, defaultHeaders: workspaceHeader() });
   const res = await client.messages.parse({
     model: config().CLAUDE_GUARD_MODEL,
     max_tokens: 2000,

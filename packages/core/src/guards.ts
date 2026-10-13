@@ -6,7 +6,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import type { HlPosition } from "./adapters/hyperliquid";
 import { GUARD_SUPERVISOR_PROMPT } from "./agent/prompts";
-import { config } from "./config";
+import { config, workspaceHeader } from "./config";
 import { sql } from "./db";
 import * as aave from "./adapters/aave";
 import type { EvmTx } from "./adapters/evm";
@@ -133,7 +133,7 @@ export async function superviseDecision(params: HlGuardParams, position: HlPosit
   const fallback = { action: params.allowedActions[0]!, reason: "default action", source: "default" as const };
   if (params.allowedActions.length === 1 || !config().ANTHROPIC_API_KEY) return fallback;
   try {
-    const client = new Anthropic({ apiKey: config().ANTHROPIC_API_KEY, timeout: timeoutMs, maxRetries: 0 });
+    const client = new Anthropic({ apiKey: config().ANTHROPIC_API_KEY, timeout: timeoutMs, maxRetries: 0, defaultHeaders: workspaceHeader() });
     const res = await client.messages.parse({
       model: config().CLAUDE_GUARD_MODEL,
       max_tokens: 1024,

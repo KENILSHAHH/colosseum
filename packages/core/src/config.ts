@@ -3,6 +3,8 @@ import { z } from "zod";
 const Env = z.object({
   // Claude. The key stays in the API process. It never reaches the browser or the agent subprocess.
   ANTHROPIC_API_KEY: z.string().optional(),
+  /** Needed when the key is not scoped to a workspace (an organization key). Sent as anthropic-workspace-id. */
+  ANTHROPIC_WORKSPACE_ID: z.string().optional(),
   CLAUDE_MODEL: z.string().default("claude-opus-5-5"),
   CLAUDE_GUARD_MODEL: z.string().default("claude-haiku-5-5"),
   // Reasoning effort of the chat agent. Higher is slower and costs more, and it finds more.
@@ -77,3 +79,9 @@ export function config(): Config {
   cached ??= Env.parse(Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== "")));
   return cached;
 }
+
+/** The workspace header for a key that is not scoped to a workspace. Empty when ANTHROPIC_WORKSPACE_ID is not set. */
+export const workspaceHeader = (): Record<string, string> => {
+  const id = config().ANTHROPIC_WORKSPACE_ID;
+  return id ? { "anthropic-workspace-id": id } : {};
+};

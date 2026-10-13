@@ -35,6 +35,8 @@ export function startLlmProxy(port = config().LLM_PROXY_PORT): Server {
         if (!HOP_HEADERS.has(k) && typeof v === "string") headers.set(k, v);
       }
       headers.set("x-api-key", apiKey);
+      const workspace = config().ANTHROPIC_WORKSPACE_ID;
+      if (workspace) headers.set("anthropic-workspace-id", workspace);
 
       const hasBody = req.method !== "GET" && req.method !== "HEAD";
       const upstream = await fetch(`${UPSTREAM}${req.url}`, {
