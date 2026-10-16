@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PayI Intro</title>
+<style>
+@font-face { font-family: "Coinbase Sans"; src: url("../../apps/web/public/fonts/Coinbase_Sans-Regular-web-1.32.woff2") format("woff2"); font-weight: 400; }
+@font-face { font-family: "Coinbase Sans"; src: url("../../apps/web/public/fonts/Coinbase_Sans-Medium-web-1.32.woff2") format("woff2"); font-weight: 500; }
+@font-face { font-family: "Coinbase Sans"; src: url("../../apps/web/public/fonts/Coinbase_Sans-Bold-web-1.32.woff2") format("woff2"); font-weight: 700; }
+@font-face { font-family: "Coinbase Mono"; src: url("../../apps/web/public/fonts/Coinbase_Mono-Regular-web.woff2") format("woff2"); font-weight: 400; }
+
+:root {
+  --bg: #05060d;
+  --surface: rgba(255,255,255,0.04);
+  --surface-2: rgba(255,255,255,0.07);
+  --border: rgba(255,255,255,0.09);
+  --border-2: rgba(255,255,255,0.16);
+  --text: #f4f6fb;
+  --muted: #9aa3b8;
+  --dim: #636b80;
+  --blue: #3b6cff;
+  --cyan: #2fd4f5;
+  --violet: #8b5cf6;
+  --green: #34d399;
+  --grad: linear-gradient(120deg, #6c9bff 0%, #2fd4f5 45%, #a78bfa 100%);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); }
+body { font-family: "Coinbase Sans", system-ui, sans-serif; color: var(--text); -webkit-font-smoothing: antialiased; }
+#stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); }
+
+/* background */
+.orb { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.55; }
+#orb1 { width: 900px; height: 900px; background: #2f5bff; }
+#orb2 { width: 700px; height: 700px; background: #2fd4f5; opacity: 0.3; }
+#orb3 { width: 800px; height: 800px; background: #8b5cf6; opacity: 0.35; }
+#grid { position: absolute; inset: 0;
+  background-image: linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+  background-size: 80px 80px;
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 30%, transparent 75%); }
+
+.scene { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+[data-in] { opacity: 0; will-change: transform, opacity; }
+
+.grad { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.mark { border-radius: 28%; background: linear-gradient(135deg, #4f7dff, #2fd4f5); display: grid; place-items: center;
+  box-shadow: 0 30px 90px -20px rgba(47,212,245,0.65), 0 0 0 1px rgba(255,255,255,0.15) inset; }
+.mark svg { fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round; }
+.mark circle { fill: #fff; stroke: none; }
+
+/* serifed capital I, so "PayI" never reads as "Payl" */
+.si { position: relative; display: inline-block; line-height: 1; }
+.si::before, .si::after { content: ""; position: absolute; left: 50%; width: var(--si-w, 0.36em); height: var(--si-h, 0.105em); transform: translateX(-50%); border-radius: 0.02em; }
+.si::before { top: var(--si-top, 0.17em); background: var(--si-c1, currentColor); }
+.si::after { bottom: var(--si-bot, 0.13em); background: var(--si-c2, currentColor); }
+.grad.si { --si-c1: #63a0ff; --si-c2: #5fc0f8; }
+h1.big { font-size: 190px; font-weight: 700; letter-spacing: -0.05em; line-height: 1; }
+h2.title { font-size: 92px; font-weight: 700; letter-spacing: -0.04em; line-height: 1.02; }
+.lead { font-size: 34px; color: var(--muted); line-height: 1.4; font-weight: 400; }
+.eyebrow { font-family: "Coinbase Mono", monospace; font-size: 22px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--cyan); }
+
+/* chat */
+.chat { width: 900px; height: 640px; border-radius: 36px; background: rgba(12,14,28,0.82); border: 1px solid var(--border-2);
+  box-shadow: 0 60px 140px -40px rgba(0,0,0,0.9), 0 0 0 1px rgba(255,255,255,0.03) inset; overflow: hidden; position: relative; }
+.chat__bar { height: 76px; display: flex; align-items: center; gap: 16px; padding: 0 32px; border-bottom: 1px solid var(--border); font-weight: 700; font-size: 24px; }
+.chat__bar .mark { width: 40px; height: 40px; border-radius: 12px; }
+.chat__bar .dot { margin-left: auto; font-size: 18px; color: var(--green); font-weight: 500; display: flex; align-items: center; gap: 10px; }
+.chat__bar .dot i { width: 10px; height: 10px; border-radius: 50%; background: var(--green); box-shadow: 0 0 14px var(--green); }
+.thread { position: absolute; inset: 76px 0 0 0; padding: 36px; display: flex; flex-direction: column; gap: 22px; }
+.bubble { align-self: flex-end; max-width: 640px; padding: 22px 28px; border-radius: 26px 26px 8px 26px; font-size: 29px; line-height: 1.35;
+  background: linear-gradient(135deg, #4f7dff, #2f5bff 60%, #6a4dff); box-shadow: 0 16px 40px -14px rgba(59,108,255,0.8); min-height: 84px; }
+.caret { display: inline-block; width: 3px; height: 1.05em; background: #fff; vertical-align: -0.15em; margin-left: 3px; }
+.steps { display: flex; flex-direction: column; gap: 14px; }
+.step { display: flex; align-items: center; gap: 16px; font-size: 25px; color: var(--muted); }
+.step .ic { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; flex: none; position: relative; }
+.step .spin { position: absolute; inset: 0; border-radius: 50%; border: 3px solid rgba(255,255,255,0.12); border-top-color: var(--cyan); }
+.step .ok { position: absolute; inset: 0; border-radius: 50%; background: rgba(52,211,153,0.16); display: grid; place-items: center; opacity: 0; }
+.step .ok svg { width: 18px; height: 18px; stroke: var(--green); stroke-width: 3.4; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.step.done { color: var(--text); }
+.result { border-radius: 26px; background: var(--surface-2); border: 1px solid var(--border-2); padding: 24px 28px; display: flex; align-items: center; gap: 22px; }
+.result .logo { width: 72px; height: 72px; border-radius: 20px; overflow: hidden; flex: none; position: relative; }
+.result .logo img { width: 100%; height: 100%; object-fit: cover; }
+.result .logo .chain { position: absolute; right: -4px; bottom: -4px; width: 30px; height: 30px; border-radius: 9px; border: 3px solid #14172a; }
+.result .t1 { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
+.result .t2 { font-size: 22px; color: var(--muted); margin-top: 4px; }
+.pill { margin-left: auto; padding: 10px 18px; border-radius: 999px; font-size: 21px; font-weight: 700; color: var(--green); background: rgba(52,211,153,0.12); border: 1px solid rgba(52,211,153,0.35); white-space: nowrap; }
+
+/* features */
+.cards { display: grid; grid-template-columns: repeat(3, 500px); gap: 30px; margin-top: 64px; }
+.card { height: 250px; text-align: left; border-radius: 32px; background: rgba(14,16,32,0.78); border: 1px solid var(--border-2); padding: 34px; display: flex; flex-direction: column; justify-content: space-between; }
+.card .logos { display: flex; gap: 12px; align-items: center; }
+.card .logos img, .card .logos .tile { width: 64px; height: 64px; border-radius: 18px; object-fit: cover; }
+.card .logos .tile { display: grid; place-items: center; background: #fff; }
+.card .logos .tile img { width: 40px; height: 40px; border-radius: 0; object-fit: contain; }
+.card .logos .tile.dark { background: #15182b; border: 1px solid var(--border-2); }
+.card h3 { font-size: 38px; font-weight: 700; letter-spacing: -0.03em; }
+.card p { font-size: 23px; color: var(--muted); margin-top: 6px; }
+.word { font-family: "Coinbase Mono", monospace; font-size: 22px; padding: 0 16px; height: 64px; display: grid; place-items: center; border-radius: 18px; background: #15182b; border: 1px solid var(--border-2); color: var(--text); }
+
+/* chains */
+.chains { display: flex; gap: 46px; margin-top: 70px; }
+.chainItem { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+.chainItem img { width: 128px; height: 128px; border-radius: 36px; box-shadow: 0 24px 60px -20px rgba(0,0,0,0.9), 0 0 0 1px rgba(255,255,255,0.12); }
+.chainItem span { font-size: 24px; color: var(--muted); font-weight: 500; }
+.google { display: inline-flex; align-items: center; gap: 18px; height: 88px; padding: 0 40px; border-radius: 999px; background: #fff; color: #05060d; font-size: 32px; font-weight: 700; box-shadow: 0 24px 70px -20px rgba(91,140,255,0.6); }
+.google img { width: 40px; height: 40px; }
+
+/* safety + price */
+.chips { display: flex; gap: 24px; margin-top: 56px; justify-content: center; }
+.chip { display: flex; align-items: center; gap: 16px; padding: 22px 34px; border-radius: 999px; border: 1px solid var(--border-2); background: rgba(14,16,32,0.8); font-size: 30px; font-weight: 500; }
+.chip svg { width: 32px; height: 32px; stroke: var(--cyan); fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.price { margin-top: 80px; display: flex; align-items: center; gap: 34px; justify-content: center; }
+.price .num { font-size: 150px; font-weight: 700; letter-spacing: -0.05em; line-height: 1; }
+.price .per { font-size: 34px; color: var(--muted); text-align: left; line-height: 1.35; }
+.price img { width: 30px; height: 30px; border-radius: 8px; vertical-align: -5px; margin-right: 8px; }
+
+.url { margin-top: 44px; display: inline-flex; align-items: center; gap: 14px; padding: 20px 40px; border-radius: 999px; font-size: 36px; font-weight: 700; color: #fff;
+  background: linear-gradient(135deg, #4f7dff, #2f5bff 60%, #6a4dff); box-shadow: 0 0 0 1px rgba(255,255,255,0.15) inset, 0 20px 60px -14px rgba(59,108,255,0.9); }
+.live { font-size: 24px; color: var(--muted); margin-top: 26px; font-family: "Coinbase Mono", monospace; letter-spacing: 0.12em; text-transform: uppercase; }
+.center { text-align: center; display: flex; flex-direction: column; align-items: center; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="orb1" class="orb"></div>
+  <div id="orb2" class="orb"></div>
+  <div id="orb3" class="orb"></div>
+  <div id="grid"></div>
+
+  <!-- 1 · Logo -->
+  <section class="scene center" data-in="0" data-out="3.9" data-fx="none">
+    <div class="mark" id="bigMark" data-in="0.15" data-fx="pop" style="width:200px;height:200px">
+      <svg viewBox="0 0 24 24" style="width:112px;height:112px;stroke-width:2.4"><path id="markPath" d="M5 19V5h7a5 5 0 0 1 0 10H8"/><circle id="markDot" cx="18.5" cy="18.5" r="1.8"/></svg>
+    </div>
+    <h1 class="big wm" style="margin-top:52px" data-in="0.7" data-fx="up">Pay<span class="grad si">I</span> Finance</h1>
+    <p class="lead" style="margin-top:28px;font-size:40px" data-in="1.4" data-fx="up">Tell an agent what you want to do with your money.<br><span style="color:var(--text)">It does it on-chain.</span></p>
+  </section>
+
+  <!-- 2 · Chat demo -->
+  <section class="scene" data-in="4.0" data-out="13.5" data-fx="fade" style="gap:110px">
+    <div style="width:640px">
+      <div class="eyebrow" data-in="4.2" data-fx="up">One AI agent for DeFi</div>
+      <h2 class="title" style="margin-top:26px" data-in="4.35" data-fx="up">Ask in<br><span class="grad">plain words.</span></h2>
+      <p class="lead" style="margin-top:34px" data-in="4.6" data-fx="up">It reads live markets, simulates every transaction, then sends it from your wallet.</p>
+    </div>
+    <div class="chat" data-in="4.3" data-fx="right">
+      <div class="chat__bar">
+        <div class="mark"><svg viewBox="0 0 24 24" style="width:22px;height:22px;stroke-width:2.6"><path d="M5 19V5h7a5 5 0 0 1 0 10H8"/><circle cx="18.5" cy="18.5" r="1.8"/></svg></div>
+        <span>Pay<span class="si">I</span></span> <div class="dot"><i></i>Mainnet</div>
+      </div>
+
+      <div class="thread" data-in="4.3" data-out="10.0" data-fx="none" data-outfx="up">
+        <div class="bubble" data-in="4.9" data-fx="up"><span data-type="Open a 3x long on ETH with 50 USD, stop at 2,300." data-start="5.1" data-cps="34"></span></div>
+        <div class="steps">
+          <div class="step" data-in="6.9" data-done="7.6" data-fx="up"><div class="ic"><div class="spin"></div><div class="ok"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div></div>Reading the Hyperliquid ETH market</div>
+          <div class="step" data-in="7.5" data-done="8.3" data-fx="up"><div class="ic"><div class="spin"></div><div class="ok"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div></div>Simulating on live chain state</div>
+          <div class="step" data-in="8.2" data-done="8.9" data-fx="up"><div class="ic"><div class="spin"></div><div class="ok"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div></div>Sending from your wallet</div>
+        </div>
+        <div class="result" data-in="9.0" data-fx="pop">
+          <div class="logo"><img src="../../apps/web/public/icons/hyperliquid.webp"></div>
+          <div><div class="t1">ETH long · 3x · 50 USD</div><div class="t2">Stop-loss at 2,300 · Hyperliquid</div></div>
+          <div class="pill">Filled</div>
+        </div>
+      </div>
+
+      <div class="thread" data-in="10.25" data-fx="up">
+        <div class="bubble"><span data-type="Buy 20 USD of Tesla stock with my USDC." data-start="10.4" data-cps="34"></span></div>
+        <div class="steps">
+          <div class="step" data-in="11.75" data-done="12.25" data-fx="up"><div class="ic"><div class="spin"></div><div class="ok"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div></div>TSLA from the official Robinhood list</div>
+          <div class="step" data-in="12.05" data-done="12.5" data-fx="up"><div class="ic"><div class="spin"></div><div class="ok"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div></div>Approve + swap in one transaction</div>
+        </div>
+        <div class="result" data-in="12.55" data-fx="pop">
+          <div class="logo" style="overflow:visible"><div style="width:72px;height:72px;border-radius:20px;background:#fff;display:grid;place-items:center"><img src="../../apps/web/public/icons/tesla.svg" style="width:44px;height:44px"></div><img class="chain" src="../../apps/web/public/icons/chain-robinhood.svg"></div>
+          <div><div class="t1">Bought 20 USD of TSLA</div><div class="t2">Robinhood Chain · gas paid for you</div></div>
+          <div class="pill">Done</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 · Features -->
+  <section class="scene center" data-in="13.5" data-out="19.5" data-fx="fade">
+    <div>
+      <div class="eyebrow" data-in="13.6" data-fx="up">One agent · every venue</div>
+      <h2 class="title" style="margin-top:22px" data-in="13.75" data-fx="up">Trade, earn, swap, <span class="grad">automate.</span></h2>
+    </div>
+    <div class="cards">
+      <div class="card" data-in="14.2" data-fx="pop">
+        <div class="logos"><img src="../../apps/web/public/icons/hyperliquid.webp"></div>
+        <div><h3>Trade perps</h3><p>Hyperliquid, incl. gold and stocks</p></div>
+      </div>
+      <div class="card" data-in="14.4" data-fx="pop">
+        <div class="logos"><div class="tile" style="background:#0b2b14"><img src="../../apps/web/public/icons/robinhood.svg"></div><div class="tile"><img src="../../apps/web/public/icons/tesla.svg"></div><div class="tile"><img src="../../apps/web/public/icons/nvidia.svg"></div><div class="tile"><img src="../../apps/web/public/icons/apple.svg"></div></div>
+        <div><h3>Buy stocks on-chain</h3><p>About 190 Robinhood stock tokens</p></div>
+      </div>
+      <div class="card" data-in="14.6" data-fx="pop">
+        <div class="logos"><img src="../../apps/web/public/icons/aave.webp"><img src="../../apps/web/public/icons/usdc.png"></div>
+        <div><h3>Lend and borrow</h3><p>Aave v4 and v3, rates across chains</p></div>
+      </div>
+      <div class="card" data-in="14.8" data-fx="pop">
+        <div class="logos"><div class="word">LI.FI</div><div class="word">Relay</div><img src="../../apps/web/public/icons/eth.png"></div>
+        <div><h3>Swap and bridge</h3><p>Any token, any supported chain</p></div>
+      </div>
+      <div class="card" data-in="15.0" data-fx="pop">
+        <div class="logos"><img src="../../apps/web/public/icons/jupiter.png"><img src="../../apps/web/public/icons/chain-solana.svg"></div>
+        <div><h3>Solana</h3><p>Jupiter swaps, Kamino and more</p></div>
+      </div>
+      <div class="card" data-in="15.2" data-fx="pop">
+        <div class="logos"><div class="word">when ETH &lt; 2,000</div></div>
+        <div><h3>Automate</h3><p>Jobs run while you are offline</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 · Wallet + chains -->
+  <section class="scene center" data-in="19.5" data-out="24.4" data-fx="fade">
+    <div class="google" data-in="19.7" data-fx="pop"><img src="../../apps/web/public/icons/google.svg">Continue with Google</div>
+    <h2 class="title" style="margin-top:56px" data-in="20.0" data-fx="up">One wallet. <span class="grad">No gas.</span></h2>
+    <p class="lead" style="margin-top:24px" data-in="20.2" data-fx="up">Gas is sponsored with EIP-7702. Every step of an action lands as one transaction.</p>
+    <div class="chains">
+      <div class="chainItem" data-in="20.6" data-fx="pop"><img src="../../apps/web/public/icons/chain-ethereum.png"><span>Ethereum</span></div>
+      <div class="chainItem" data-in="20.75" data-fx="pop"><img src="../../apps/web/public/icons/chain-arbitrum.png"><span>Arbitrum</span></div>
+      <div class="chainItem" data-in="20.9" data-fx="pop"><img src="../../apps/web/public/icons/chain-base.png"><span>Base</span></div>
+      <div class="chainItem" data-in="21.05" data-fx="pop"><img src="../../apps/web/public/icons/chain-robinhood.svg"><span>Robinhood Chain</span></div>
+      <div class="chainItem" data-in="21.2" data-fx="pop"><img src="../../apps/web/public/icons/chain-tempo.svg"><span>Tempo</span></div>
+      <div class="chainItem" data-in="21.35" data-fx="pop"><img src="../../apps/web/public/icons/chain-hyperliquid.svg"><span>Hyperliquid</span></div>
+      <div class="chainItem" data-in="21.5" data-fx="pop"><img src="../../apps/web/public/icons/chain-solana.svg"><span>Solana</span></div>
+    </div>
+  </section>
+
+  <!-- 5 · Safety + price -->
+  <section class="scene center" data-in="24.4" data-out="27.5" data-fx="fade">
+    <h2 class="title" data-in="24.5" data-fx="up">Safe by <span class="grad">default.</span></h2>
+    <div class="chips">
+      <div class="chip" data-in="24.8" data-fx="pop"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg>Simulates first</div>
+      <div class="chip" data-in="25.0" data-fx="pop"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Acts only by your rules</div>
+      <div class="chip" data-in="25.2" data-fx="pop"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Narrow permissions</div>
+    </div>
+    <div class="price" data-in="25.6" data-fx="up">
+      <div class="num grad">0.01 USD</div>
+      <div class="per">per prompt<br><span style="font-size:26px"><img src="../../apps/web/public/icons/chain-tempo.svg">paid in OUSD on Tempo · no subscription</span></div>
+    </div>
+  </section>
+
+  <!-- 6 · End card -->
+  <section class="scene center" data-in="27.5" data-fx="fade">
+    <div class="mark" data-in="27.6" data-fx="pop" style="width:150px;height:150px">
+      <svg viewBox="0 0 24 24" style="width:84px;height:84px;stroke-width:2.4"><path d="M5 19V5h7a5 5 0 0 1 0 10H8"/><circle cx="18.5" cy="18.5" r="1.8"/></svg>
+    </div>
+    <h1 class="big wm" style="margin-top:40px;font-size:150px" data-in="27.8" data-fx="up">Pay<span class="grad si">I</span> Finance</h1>
+    <div class="url" data-in="28.1" data-fx="pop">app.payi.finance</div>
+    <div class="live" data-in="28.35" data-fx="up">Live on mainnet</div>
+  </section>
+</div>
+
+<script>
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const easeOut = x => 1 - Math.pow(1 - x, 3);
+const easeBack = x => { const c1 = 1.5, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const prog = (t, a, d) => clamp((t - a) / d, 0, 1);
+
+const els = [...document.querySelectorAll('[data-in]')];
+const typers = [...document.querySelectorAll('[data-type]')];
+const steps = [...document.querySelectorAll('[data-done]')];
+const markPath = document.getElementById('markPath');
+const markDot = document.getElementById('markDot');
+const pathLen = markPath.getTotalLength();
+markPath.style.strokeDasharray = pathLen;
+
+function render(t) {
+  // background drift
+  const o1 = document.getElementById('orb1').style, o2 = document.getElementById('orb2').style, o3 = document.getElementById('orb3').style;
+  o1.transform = `translate(${-250 + Math.sin(t * 0.35) * 160}px, ${-300 + Math.cos(t * 0.27) * 120}px)`;
+  o2.transform = `translate(${1250 + Math.cos(t * 0.3) * 180}px, ${520 + Math.sin(t * 0.4) * 120}px)`;
+  o3.transform = `translate(${900 + Math.sin(t * 0.22) * 260}px, ${-380 + Math.cos(t * 0.33) * 140}px)`;
+  document.getElementById('grid').style.backgroundPosition = `${t * 12}px ${t * 8}px`;
+
+  for (const el of els) {
+    const tin = parseFloat(el.dataset.in);
+    const tout = el.dataset.out !== undefined ? parseFloat(el.dataset.out) : Infinity;
+    const fx = el.dataset.fx || 'up';
+    const p = prog(t, tin, fx === 'pop' ? 0.55 : 0.7);
+    const q = easeOut(prog(t, tout, 0.45));
+    const e = easeOut(p);
+    let tf = '';
+    if (fx === 'up') tf = `translateY(${(1 - e) * 40}px)`;
+    else if (fx === 'right') tf = `translateX(${(1 - e) * 120}px)`;
+    else if (fx === 'pop') { const b = easeBack(p); tf = `scale(${0.82 + 0.18 * b})`; }
+    else if (fx === 'fade') tf = `scale(${1 + q * 0.04})`;
+    if (el.dataset.outfx === 'up') tf += ` translateY(${-q * 60}px)`;
+    el.style.opacity = fx === 'none' ? (t >= tin ? 1 - q : 0) : e * (1 - q);
+    el.style.transform = tf;
+    el.style.filter = fx === 'fade' && q > 0 ? `blur(${q * 10}px)` : '';
+  }
+
+  for (const el of typers) {
+    const text = el.dataset.type, start = parseFloat(el.dataset.start), cps = parseFloat(el.dataset.cps);
+    const n = clamp(Math.floor((t - start) * cps), 0, text.length);
+    const typing = t >= start - 0.3 && n < text.length;
+    const blink = typing || (t < start + text.length / cps + 0.6 && Math.floor(t * 2.5) % 2 === 0);
+    el.innerHTML = text.slice(0, n) + (t >= start - 0.3 && blink ? '<span class="caret"></span>' : '');
+  }
+
+  for (const el of steps) {
+    const done = t >= parseFloat(el.dataset.done);
+    el.classList.toggle('done', done);
+    el.querySelector('.spin').style.opacity = done ? 0 : 1;
+    el.querySelector('.spin').style.transform = `rotate(${t * 540}deg)`;
+    const ok = el.querySelector('.ok');
+    const k = easeBack(prog(t, parseFloat(el.dataset.done), 0.35));
+    ok.style.opacity = done ? 1 : 0;
+    ok.style.transform = `scale(${0.5 + 0.5 * k})`;
+  }
+
+  // draw the logo mark
+  const d = easeOut(prog(t, 0.35, 1.1));
+  markPath.style.strokeDashoffset = pathLen * (1 - d);
+  markDot.style.opacity = prog(t, 1.25, 0.25);
+}
+window.render = render;
+const qs = new URLSearchParams(location.search);
+if (qs.has('t')) render(parseFloat(qs.get('t')));
+else { const t0 = performance.now(); (function loop() { render(((performance.now() - t0) / 1000) % 30); requestAnimationFrame(loop); })(); }
+</script>
+</body>
+</html>
