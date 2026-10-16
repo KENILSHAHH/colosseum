@@ -1,9 +1,11 @@
-// Renders index.html frame by frame and encodes media/intro-video/payi-intro.mp4.
+// Renders index.html frame by frame, generates the music with music.py, and encodes
+// media/intro-video/payi-intro.mp4.
 // Usage: serve the repo root on :8765 (npx http-server -p 8765), then
 //   node media/intro-video/render.mjs            full video
 //   node media/intro-video/render.mjs 5 9.5 20   stills at those seconds (PNG)
 import { createRequire } from 'node:module';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -27,7 +29,10 @@ if (stills.length) {
   }
 } else {
   const out = path.join(here, 'payi-intro.mp4');
+  const music = path.join(os.tmpdir(), 'payi-intro-music.wav');
+  execFileSync('python3', [path.join(here, 'music.py'), music], { stdio: 'inherit' });
   const ff = spawn('ffmpeg', ['-y', '-f', 'image2pipe', '-framerate', String(FPS), '-c:v', 'mjpeg', '-i', '-',
+    '-i', music, '-map', '0:v', '-map', '1:a', '-c:a', 'aac', '-b:a', '192k', '-shortest',
     '-c:v', 'libx264', '-preset', 'slow', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', out],
     { stdio: ['pipe', 'inherit', 'inherit'] });
   for (let i = 0; i < FPS * DURATION; i++) {

@@ -18,11 +18,11 @@
   --text: #f4f6fb;
   --muted: #9aa3b8;
   --dim: #636b80;
-  --blue: #3b6cff;
-  --cyan: #2fd4f5;
-  --violet: #8b5cf6;
+  --blue: #8752F3;
+  --cyan: #19FB9B;
+  --violet: #9945FF;
   --green: #34d399;
-  --grad: linear-gradient(120deg, #6c9bff 0%, #2fd4f5 45%, #a78bfa 100%);
+  --grad: linear-gradient(120deg, #9945FF 0%, #8752F3 25%, #5497D5 50%, #43B4CA 65%, #28E0B9 82%, #19FB9B 100%);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); }
@@ -31,9 +31,9 @@ body { font-family: "Coinbase Sans", system-ui, sans-serif; color: var(--text); 
 
 /* background */
 .orb { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.55; }
-#orb1 { width: 900px; height: 900px; background: #2f5bff; }
-#orb2 { width: 700px; height: 700px; background: #2fd4f5; opacity: 0.3; }
-#orb3 { width: 800px; height: 800px; background: #8b5cf6; opacity: 0.35; }
+#orb1 { width: 900px; height: 900px; background: #9945FF; opacity: 0.45; }
+#orb2 { width: 700px; height: 700px; background: #14F195; opacity: 0.22; }
+#orb3 { width: 800px; height: 800px; background: #5497D5; opacity: 0.3; }
 #grid { position: absolute; inset: 0;
   background-image: linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
   background-size: 80px 80px;
@@ -43,17 +43,13 @@ body { font-family: "Coinbase Sans", system-ui, sans-serif; color: var(--text); 
 [data-in] { opacity: 0; will-change: transform, opacity; }
 
 .grad { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.mark { border-radius: 28%; background: linear-gradient(135deg, #4f7dff, #2fd4f5); display: grid; place-items: center;
-  box-shadow: 0 30px 90px -20px rgba(47,212,245,0.65), 0 0 0 1px rgba(255,255,255,0.15) inset; }
-.mark svg { fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round; }
-.mark circle { fill: #fff; stroke: none; }
 
 /* serifed capital I, so "PayI" never reads as "Payl" */
 .si { position: relative; display: inline-block; line-height: 1; }
 .si::before, .si::after { content: ""; position: absolute; left: 50%; width: var(--si-w, 0.36em); height: var(--si-h, 0.105em); transform: translateX(-50%); border-radius: 0.02em; }
 .si::before { top: var(--si-top, 0.17em); background: var(--si-c1, currentColor); }
 .si::after { bottom: var(--si-bot, 0.13em); background: var(--si-c2, currentColor); }
-.grad.si { --si-c1: #63a0ff; --si-c2: #5fc0f8; }
+.grad.si { --si-c1: var(--grad); --si-c2: var(--grad); }
 h1.big { font-size: 190px; font-weight: 700; letter-spacing: -0.05em; line-height: 1; }
 h2.title { font-size: 92px; font-weight: 700; letter-spacing: -0.04em; line-height: 1.02; }
 .lead { font-size: 34px; color: var(--muted); line-height: 1.4; font-weight: 400; }
@@ -63,12 +59,11 @@ h2.title { font-size: 92px; font-weight: 700; letter-spacing: -0.04em; line-heig
 .chat { width: 900px; height: 640px; border-radius: 36px; background: rgba(12,14,28,0.82); border: 1px solid var(--border-2);
   box-shadow: 0 60px 140px -40px rgba(0,0,0,0.9), 0 0 0 1px rgba(255,255,255,0.03) inset; overflow: hidden; position: relative; }
 .chat__bar { height: 76px; display: flex; align-items: center; gap: 16px; padding: 0 32px; border-bottom: 1px solid var(--border); font-weight: 700; font-size: 24px; }
-.chat__bar .mark { width: 40px; height: 40px; border-radius: 12px; }
 .chat__bar .dot { margin-left: auto; font-size: 18px; color: var(--green); font-weight: 500; display: flex; align-items: center; gap: 10px; }
 .chat__bar .dot i { width: 10px; height: 10px; border-radius: 50%; background: var(--green); box-shadow: 0 0 14px var(--green); }
 .thread { position: absolute; inset: 76px 0 0 0; padding: 36px; display: flex; flex-direction: column; gap: 22px; }
 .bubble { align-self: flex-end; max-width: 640px; padding: 22px 28px; border-radius: 26px 26px 8px 26px; font-size: 29px; line-height: 1.35;
-  background: linear-gradient(135deg, #4f7dff, #2f5bff 60%, #6a4dff); box-shadow: 0 16px 40px -14px rgba(59,108,255,0.8); min-height: 84px; }
+  background: linear-gradient(135deg, #9945FF, #6f5ce8 50%, #2fb8c4 100%); box-shadow: 0 16px 40px -14px rgba(153,69,255,0.75); min-height: 84px; }
 .caret { display: inline-block; width: 3px; height: 1.05em; background: #fff; vertical-align: -0.15em; margin-left: 3px; }
 .steps { display: flex; flex-direction: column; gap: 14px; }
 .step { display: flex; align-items: center; gap: 16px; font-size: 25px; color: var(--muted); }
@@ -102,7 +97,7 @@ h2.title { font-size: 92px; font-weight: 700; letter-spacing: -0.04em; line-heig
 .chainItem { display: flex; flex-direction: column; align-items: center; gap: 18px; }
 .chainItem img { width: 128px; height: 128px; border-radius: 36px; box-shadow: 0 24px 60px -20px rgba(0,0,0,0.9), 0 0 0 1px rgba(255,255,255,0.12); }
 .chainItem span { font-size: 24px; color: var(--muted); font-weight: 500; }
-.google { display: inline-flex; align-items: center; gap: 18px; height: 88px; padding: 0 40px; border-radius: 999px; background: #fff; color: #05060d; font-size: 32px; font-weight: 700; box-shadow: 0 24px 70px -20px rgba(91,140,255,0.6); }
+.google { display: inline-flex; align-items: center; gap: 18px; height: 88px; padding: 0 40px; border-radius: 999px; background: #fff; color: #05060d; font-size: 32px; font-weight: 700; box-shadow: 0 24px 70px -20px rgba(153,69,255,0.6); }
 .google img { width: 40px; height: 40px; }
 
 /* safety + price */
@@ -115,8 +110,7 @@ h2.title { font-size: 92px; font-weight: 700; letter-spacing: -0.04em; line-heig
 .price img { width: 30px; height: 30px; border-radius: 8px; vertical-align: -5px; margin-right: 8px; }
 
 .url { margin-top: 44px; display: inline-flex; align-items: center; gap: 14px; padding: 20px 40px; border-radius: 999px; font-size: 36px; font-weight: 700; color: #fff;
-  background: linear-gradient(135deg, #4f7dff, #2f5bff 60%, #6a4dff); box-shadow: 0 0 0 1px rgba(255,255,255,0.15) inset, 0 20px 60px -14px rgba(59,108,255,0.9); }
-.live { font-size: 24px; color: var(--muted); margin-top: 26px; font-family: "Coinbase Mono", monospace; letter-spacing: 0.12em; text-transform: uppercase; }
+  background: linear-gradient(135deg, #9945FF, #6f5ce8 50%, #2fb8c4 100%); box-shadow: 0 0 0 1px rgba(255,255,255,0.15) inset, 0 20px 60px -14px rgba(153,69,255,0.85); }
 .center { text-align: center; display: flex; flex-direction: column; align-items: center; }
 </style>
 </head>
@@ -129,11 +123,8 @@ h2.title { font-size: 92px; font-weight: 700; letter-spacing: -0.04em; line-heig
 
   <!-- 1 · Logo -->
   <section class="scene center" data-in="0" data-out="3.9" data-fx="none">
-    <div class="mark" id="bigMark" data-in="0.15" data-fx="pop" style="width:200px;height:200px">
-      <svg viewBox="0 0 24 24" style="width:112px;height:112px;stroke-width:2.4"><path id="markPath" d="M5 19V5h7a5 5 0 0 1 0 10H8"/><circle id="markDot" cx="18.5" cy="18.5" r="1.8"/></svg>
-    </div>
-    <h1 class="big wm" style="margin-top:52px" data-in="0.7" data-fx="up">Pay<span class="grad si">I</span> Finance</h1>
-    <p class="lead" style="margin-top:28px;font-size:40px" data-in="1.4" data-fx="up">Tell an agent what you want to do with your money.<br><span style="color:var(--text)">It does it on-chain.</span></p>
+    <h1 class="big" data-in="0.3" data-fx="up">Pay<span class="grad si">I</span> Finance</h1>
+    <p class="lead" style="margin-top:28px;font-size:40px" data-in="1.0" data-fx="up">Tell an agent what you want to do with your money.<br><span style="color:var(--text)">It does it on-chain.</span></p>
   </section>
 
   <!-- 2 · Chat demo -->
@@ -145,7 +136,6 @@ h2.title { font-size: 92px; font-weight: 700; letter-spacing: -0.04em; line-heig
     </div>
     <div class="chat" data-in="4.3" data-fx="right">
       <div class="chat__bar">
-        <div class="mark"><svg viewBox="0 0 24 24" style="width:22px;height:22px;stroke-width:2.6"><path d="M5 19V5h7a5 5 0 0 1 0 10H8"/><circle cx="18.5" cy="18.5" r="1.8"/></svg></div>
         <span>Pay<span class="si">I</span></span> <div class="dot"><i></i>Mainnet</div>
       </div>
 
@@ -244,13 +234,9 @@ h2.title { font-size: 92px; font-weight: 700; letter-spacing: -0.04em; line-heig
 
   <!-- 6 · End card -->
   <section class="scene center" data-in="27.5" data-fx="fade">
-    <div class="mark" data-in="27.6" data-fx="pop" style="width:150px;height:150px">
-      <svg viewBox="0 0 24 24" style="width:84px;height:84px;stroke-width:2.4"><path d="M5 19V5h7a5 5 0 0 1 0 10H8"/><circle cx="18.5" cy="18.5" r="1.8"/></svg>
-    </div>
-    <h1 class="big wm" style="margin-top:40px;font-size:150px" data-in="27.8" data-fx="up">Pay<span class="grad si">I</span> Finance</h1>
-    <div class="url" data-in="28.1" data-fx="pop">app.payi.finance</div>
-    <div class="live" data-in="28.35" data-fx="up">Live on mainnet</div>
-  </section>
+    <h1 class="big" style="font-size:170px" data-in="27.6" data-fx="up">Pay<span class="grad si">I</span> Finance</h1>
+    <div class="url" style="margin-top:56px" data-in="27.95" data-fx="pop">app.payi.finance</div>
+      </section>
 </div>
 
 <script>
@@ -262,10 +248,6 @@ const prog = (t, a, d) => clamp((t - a) / d, 0, 1);
 const els = [...document.querySelectorAll('[data-in]')];
 const typers = [...document.querySelectorAll('[data-type]')];
 const steps = [...document.querySelectorAll('[data-done]')];
-const markPath = document.getElementById('markPath');
-const markDot = document.getElementById('markDot');
-const pathLen = markPath.getTotalLength();
-markPath.style.strokeDasharray = pathLen;
 
 function render(t) {
   // background drift
@@ -312,10 +294,6 @@ function render(t) {
     ok.style.transform = `scale(${0.5 + 0.5 * k})`;
   }
 
-  // draw the logo mark
-  const d = easeOut(prog(t, 0.35, 1.1));
-  markPath.style.strokeDashoffset = pathLen * (1 - d);
-  markDot.style.opacity = prog(t, 1.25, 0.25);
 }
 window.render = render;
 const qs = new URLSearchParams(location.search);
