@@ -5,7 +5,7 @@ import { verifyMessage } from "viem";
 import { z } from "zod";
 import { Receipt } from "mppx";
 import {
-  config, ensureUser, executeIntent, getDepositWallet, getIntent, getOrCreateWallet, getPositions, isExpired, listDeposits, listIntents,
+  claudeConfigured, config, ensureUser, executeIntent, getDepositWallet, getIntent, getOrCreateWallet, getPositions, isExpired, listDeposits, listIntents,
   migrate, privyEnabled, sponsorAddress, syncDepositWallet, syncSolanaWallet, getSolanaWallet, walletSender, privySignIn, solanaSignAndSend, promptPriceUsd, recordCharge, runChatAgent, sendToRun, ChatRecorder, activeRecorders, listChats, getChat, deleteChat, signToken, sql, startLlmProxy, transition, updateWalletSettings, verifyToken, withdrawToOwner, type AgentEvent,
 } from "@app/core";
 import { creditHyperliquid, hyperliquid, solanaBalances, buildSolanaDeposit, delegation, jobs, lifi, paybox, SOLANA_DEPOSIT_TOKENS } from "@app/core";
@@ -301,7 +301,7 @@ app.post("/chat", async (c) => {
   const userId = c.get("userId");
   const body = ChatBody.parse(await c.req.json());
   const cfg = config();
-  if (!cfg.ANTHROPIC_API_KEY) return c.json({ error: "ANTHROPIC_API_KEY is not set on the server. Add it to .env and restart the API." }, 503);
+  if (!claudeConfigured()) return c.json({ error: "No Claude key is set on the server. Add AWS_BEARER_TOKEN_BEDROCK or ANTHROPIC_API_KEY to .env and restart the API." }, 503);
 
   // Development mode: no payment. Usage is still measured and priced.
   if (!mppEnabled()) return chatStream(userId, body, c.req.raw.signal, true);

@@ -5,6 +5,10 @@ const Env = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   /** Needed when the key is not scoped to a workspace (an organization key). Sent as anthropic-workspace-id. */
   ANTHROPIC_WORKSPACE_ID: z.string().optional(),
+  // Claude on Amazon Bedrock. When the Bedrock API key is set, every Claude request goes to Bedrock and ANTHROPIC_API_KEY is not used.
+  // On Bedrock, the model ids are inference profile ids, for example us.anthropic.claude-opus-5-5.
+  AWS_BEARER_TOKEN_BEDROCK: z.string().optional(),
+  AWS_REGION: z.string().default("us-east-1"),
   CLAUDE_MODEL: z.string().default("claude-opus-5-5"),
   CLAUDE_GUARD_MODEL: z.string().default("claude-haiku-5-5"),
   // Reasoning effort of the chat agent. Higher is slower and costs more, and it finds more.
@@ -79,6 +83,12 @@ export function config(): Config {
   cached ??= Env.parse(Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== "")));
   return cached;
 }
+
+/** True when Claude requests go to Amazon Bedrock. */
+export const useBedrock = (): boolean => !!config().AWS_BEARER_TOKEN_BEDROCK;
+
+/** True when the server has a key for Claude: the Bedrock API key or the Anthropic API key. */
+export const claudeConfigured = (): boolean => useBedrock() || !!config().ANTHROPIC_API_KEY;
 
 /** The workspace header for a key that is not scoped to a workspace. Empty when ANTHROPIC_WORKSPACE_ID is not set. */
 export const workspaceHeader = (): Record<string, string> => {

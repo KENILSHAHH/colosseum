@@ -1,12 +1,12 @@
 // Liquidation Guard: trigger logic, idempotent claim, bounded supervisor, deterministic unwind.
 // The trigger and the unwind are plain code. Claude only picks one of the actions that the user approved.
 import { randomUUID } from "node:crypto";
-import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import type { HlPosition } from "./adapters/hyperliquid";
 import { GUARD_SUPERVISOR_PROMPT } from "./agent/prompts";
-import { config, workspaceHeader } from "./config";
+import { claudeClient } from "./claude";
+import { claudeConfigured, config } from "./config";
 import { sql } from "./db";
 import * as aave from "./adapters/aave";
 import type { EvmTx } from "./adapters/evm";
@@ -131,9 +131,9 @@ const Decision = z.object({ action: z.enum(["full_close", "partial_deleverage", 
  */
 export async function superviseDecision(params: HlGuardParams, position: HlPosition, timeoutMs = 4_000): Promise<{ action: HlGuardAction; reason: string; source: "claude" | "default" }> {
   const fallback = { action: params.allowedActions[0]!, reason: "default action", source: "default" as const };
-  if (params.allowedActions.length === 1 || !config().ANTHROPIC_API_KEY) return fallback;
+  if (params.allowedActions.length === 1 || !claudeConfigured()) return fallback;
   try {
-    const client = new Anthropic({ apiKey: config().ANTHROPIC_API_KEY, timeout: timeoutMs, maxRetries: 0, defaultHeaders: workspaceHeader() });
+    const client = claudeClient({ timeout: timeoutMs, maxRetries: 0 });
     const res = await client.messages.parse({
       model: config().CLAUDE_GUARD_MODEL,
       max_tokens: 1024,

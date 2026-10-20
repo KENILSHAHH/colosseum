@@ -18,7 +18,9 @@ const CACHE_WRITE_FACTOR = 1.25;
 export interface TokenUsage { inputTokens: number; outputTokens: number; cacheReadInputTokens: number; cacheCreationInputTokens: number }
 
 export function claudeCostUsd(model: string, u: TokenUsage): number {
-  const p = Object.entries(PRICES).find(([id]) => model.startsWith(id))?.[1] ?? FALLBACK;
+  // A Bedrock id (us.anthropic.claude-opus-5-5 or anthropic.claude-opus-5-5) is priced as the Claude id.
+  const id = model.replace(/^(?:[a-z]+\.)?anthropic\./, "");
+  const p = Object.entries(PRICES).find(([k]) => id.startsWith(k))?.[1] ?? FALLBACK;
   return (
     (u.inputTokens * p.input +
       u.cacheReadInputTokens * p.input * CACHE_READ_FACTOR +

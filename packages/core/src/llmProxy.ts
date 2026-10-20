@@ -4,10 +4,12 @@
 // Pattern: https://code.claude.com/docs/en/agent-sdk/secure-deployment#the-proxy-pattern
 import { createServer, type Server } from "node:http";
 import { Readable } from "node:stream";
-import { config } from "./config";
+import { config, useBedrock } from "./config";
 import { signToken, verifyToken } from "./crypto";
 
 const UPSTREAM = "https://api.anthropic.com";
+// On Bedrock, the subprocess sends Bedrock requests (/model/{id}/invoke-with-response-stream). The proxy sends them to Bedrock with the real key.
+const bedrockUpstream = () => `https://bedrock-runtime.${config().AWS_REGION}.amazonaws.com`;
 const HOP_HEADERS = new Set(["host", "connection", "content-length", "x-api-key", "authorization", "accept-encoding"]);
 
 export function llmSessionToken(userId: string): string {
@@ -23,10 +25,11 @@ export function startLlmProxy(port = config().LLM_PROXY_PORT): Server {
         res.writeHead(401, { "content-type": "application/json" }).end(JSON.stringify({ type: "error", error: { type: "authentication_error", message: "invalid session token" } }));
         return;
       }
-      const apiKey = config().ANTHROPIC_API_KEY;
+      const bedrock = useBedrock();
+      const apiKey = bedrock ? config().AWS_BEARER_TOKEN_BEDROCK : config().ANTHROPIC_API_KEY;
       if (!apiKey) {
         // 401 is not retried by the client. The error reaches the user at once.
-        res.writeHead(401, { "content-type": "application/json" }).end(JSON.stringify({ type: "error", error: { type: "authentication_error", message: "ANTHROPIC_API_KEY is not set on the server." } }));
+        res.writeHead(401, { "content-type": "application/json" }).end(JSON.stringify({ type: "error", error: { type: "authentication_error", message: "No Claude key is set on the server." } }));
         return;
       }
 
@@ -34,12 +37,16 @@ export function startLlmProxy(port = config().LLM_PROXY_PORT): Server {
       for (const [k, v] of Object.entries(req.headers)) {
         if (!HOP_HEADERS.has(k) && typeof v === "string") headers.set(k, v);
       }
-      headers.set("x-api-key", apiKey);
-      const workspace = config().ANTHROPIC_WORKSPACE_ID;
-      if (workspace) headers.set("anthropic-workspace-id", workspace);
+      if (bedrock) {
+        headers.set("authorization", `Bearer ${apiKey}`);
+      } else {
+        headers.set("x-api-key", apiKey);
+        const workspace = config().ANTHROPIC_WORKSPACE_ID;
+        if (workspace) headers.set("anthropic-workspace-id", workspace);
+      }
 
       const hasBody = req.method !== "GET" && req.method !== "HEAD";
-      const upstream = await fetch(`${UPSTREAM}${req.url}`, {
+      const upstream = await fetch(`${bedrock ? bedrockUpstream() : UPSTREAM}${req.url}`, {
         method: req.method,
         headers,
         body: hasBody ? (Readable.toWeb(req) as ReadableStream) : undefined,

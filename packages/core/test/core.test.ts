@@ -61,6 +61,11 @@ describe("pricing", () => {
     const cost = claudeCostUsd("claude-opus-5-5", { inputTokens: 10_000, outputTokens: 2_000, cacheReadInputTokens: 50_000, cacheCreationInputTokens: 0 });
     expect(cost).toBeCloseTo(0.04 + 0.04 + 0.02, 6);
   });
+  it("prices a Bedrock model id as the Claude model", () => {
+    const u = { inputTokens: 1_000_000, outputTokens: 0, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 };
+    expect(claudeCostUsd("us.anthropic.claude-opus-5-5", u)).toBe(4);
+    expect(claudeCostUsd("anthropic.claude-opus-5-5", u)).toBe(4);
+  });
   it("charges one flat price for a prompt", () => {
     expect(promptPriceUsd()).toBe(0.01);
   });

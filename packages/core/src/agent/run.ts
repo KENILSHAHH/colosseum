@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { query, type Options, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { recordUsage } from "../billing/pricing";
-import { config } from "../config";
+import { config, useBedrock } from "../config";
 import type { Intent } from "../intents";
 import { llmSessionToken } from "../llmProxy";
 import { allToolNames, buildTools, SERVER_NAME, type WalletRequest } from "../tools/index";
@@ -224,8 +224,23 @@ async function* runOne(args: RunArgs): AsyncGenerator<AgentEvent> {
       PATH: process.env.PATH,
       HOME: configDir,
       LANG: process.env.LANG ?? "en_US.UTF-8",
-      ANTHROPIC_BASE_URL: `http://127.0.0.1:${c.LLM_PROXY_PORT}`,
-      ANTHROPIC_API_KEY: llmSessionToken(args.userId),
+      // On Bedrock, the session token goes in the Bedrock key variable. The proxy replaces it with the real key.
+      // The model aliases point to the configured models, because a Bedrock key can be limited to some models.
+      ...(useBedrock()
+        ? {
+            CLAUDE_CODE_USE_BEDROCK: "1",
+            ANTHROPIC_BEDROCK_BASE_URL: `http://127.0.0.1:${c.LLM_PROXY_PORT}`,
+            AWS_BEARER_TOKEN_BEDROCK: llmSessionToken(args.userId),
+            AWS_REGION: c.AWS_REGION,
+            ANTHROPIC_DEFAULT_OPUS_MODEL: c.CLAUDE_MODEL,
+            ANTHROPIC_DEFAULT_SONNET_MODEL: c.CLAUDE_MODEL,
+            ANTHROPIC_DEFAULT_HAIKU_MODEL: c.CLAUDE_GUARD_MODEL,
+            ANTHROPIC_SMALL_FAST_MODEL: c.CLAUDE_GUARD_MODEL,
+          }
+        : {
+            ANTHROPIC_BASE_URL: `http://127.0.0.1:${c.LLM_PROXY_PORT}`,
+            ANTHROPIC_API_KEY: llmSessionToken(args.userId),
+          }),
       CLAUDE_CONFIG_DIR: configDir,
       CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",

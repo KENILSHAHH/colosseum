@@ -1,10 +1,10 @@
 // The memory of the agent. Lessons it learned while it solved a problem: a fix for an error, a working route, a fact about a venue.
 // "global" lessons help every user, "user" lessons are about one user (preferences, positions, decisions).
 // A new chat starts with the lessons in its first message. Lessons are short, and the newest ones win.
-import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
-import { config, workspaceHeader } from "./config";
+import { claudeClient } from "./claude";
+import { claudeConfigured, config } from "./config";
 import { sql } from "./db";
 
 export interface Lesson { id: number; scope: "global" | "user"; topic: string; lesson: string; createdAt: string }
@@ -78,10 +78,9 @@ Rules: one sentence or two, plain and specific (tool names, parameters, minimums
 export async function reflectOnChat(userId: string, chat: ChatRecord): Promise<number> {
   const failed = chat.steps.some((s) => !s.ok);
   if (!failed && !REFUSAL.test(chat.reply)) return 0;
-  const key = config().ANTHROPIC_API_KEY;
-  if (!key) return 0;
+  if (!claudeConfigured()) return 0;
   const existing = await recallLessons(userId);
-  const client = new Anthropic({ apiKey: key, timeout: 60_000, maxRetries: 1, defaultHeaders: workspaceHeader() });
+  const client = claudeClient({ timeout: 60_000, maxRetries: 1 });
   const res = await client.messages.parse({
     model: config().CLAUDE_GUARD_MODEL,
     max_tokens: 2000,

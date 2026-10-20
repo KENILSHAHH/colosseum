@@ -15,6 +15,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@anthropic-ai/bedrock-sdk": "0.35.0",
     "@anthropic-ai/claude-agent-sdk": "^0.3.296",
     "@anthropic-ai/sdk": "^0.133.0",
     "@bgd-labs/aave-address-book": "^4.44.22",
